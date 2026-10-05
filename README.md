@@ -8,7 +8,7 @@ A simple, phone-friendly place for the family's important documents (Aadhar, PAN
 - Filter by type (ID Proofs, Bank & Tax, Insurance…) and by person (MOM, DAD…).
 - Open, download, share to WhatsApp, edit details or delete.
 - Any file type can be stored (photos, PDFs, Word, Excel…). Photos and PDFs open in the browser; other files download.
-- **Duplicate check:** each file is fingerprinted (SHA-256) on upload. If the exact same file is already saved, under any name, the upload screen says which document it is, with a link to view it. A banner on the home page lists any files saved more than once so the extras can be deleted.
+- **Duplicate check:** each file is fingerprinted (SHA-256) on upload. If the exact same file is already saved, under any name, the upload screen says which document it is, with a link to view it, and asks to **Replace old one** (the saved copy takes the new name, person and type) or **Keep both**. If a different file already has the same name for the same person, it can **Replace** that one too (the old file is deleted after the new one is saved). A banner on the home page lists any files saved more than once, and each one has a **Keep this one, delete the other copies** button.
 - Files are stored **privately** in Vercel Blob and can only be opened by someone who has logged in with the family password.
 
 ## Deploy on Vercel

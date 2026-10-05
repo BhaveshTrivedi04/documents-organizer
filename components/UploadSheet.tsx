@@ -34,6 +34,8 @@ type Item = {
   preview: string | null;
   /** Fingerprint of the file; undefined while it is being worked out. */
   hash?: string;
+  /** What to do when this exact file is already saved. */
+  choice?: "replace" | "keep";
 };
 
 const MIME_BY_EXT: Record<string, string> = {
@@ -69,6 +71,8 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
   const [categoryTouched, setCategoryTouched] = useState(editing);
   const [person, setPerson] = useState(editDoc?.person === DEFAULT_PERSON ? "" : (editDoc?.person ?? ""));
   const [progress, setProgress] = useState<number | null>(null);
+  /** Saved documents (same name, different file) to delete once the new upload succeeds. */
+  const [replaceTargets, setReplaceTargets] = useState<string[]>([]);
   const [error, setError] = useState("");
   const cameraRef = useRef<HTMLInputElement>(null);
   const filesRef = useRef<HTMLInputElement>(null);
@@ -80,21 +84,26 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
   const persons = useMemo(() => Array.from(new Set(docs.map((d) => d.person))).sort(), [docs]);
   const otherDocs = useMemo(() => docs.filter((d) => d.pathname !== editDoc?.pathname), [docs, editDoc]);
 
-  // For each selected file: the saved document with the same contents, or the
-  // earlier file in this same batch that is identical.
+  // For each selected file: the earlier file in this same batch that is
+  // identical, or else the saved document with the same contents.
   const contentDupes = items.map((it, i) => {
-    const saved = otherDocs.find((d) => sameHash(d.hash, it.hash));
-    if (saved) return { saved };
     const earlier = items.findIndex((other, j) => j < i && sameHash(other.hash, it.hash));
-    return earlier >= 0 ? { earlier } : null;
+    if (earlier >= 0) return { earlier };
+    const saved = otherDocs.find((d) => sameHash(d.hash, it.hash));
+    return saved ? { saved } : null;
   });
-  const dupeCount = contentDupes.filter(Boolean).length;
+  const undecided = items.filter((it, i) => contentDupes[i]?.saved && !it.choice).length;
   const checking = items.some((it) => it.hash === undefined);
 
   const finalPerson = cleanName(person) || DEFAULT_PERSON;
+  const contentDupePaths = new Set(contentDupes.map((d) => d?.saved?.pathname).filter(Boolean));
   const nameMatches = cleanName(name)
-    ? otherDocs.filter((d) => d.person === finalPerson && sameDocName(d.name, name))
+    ? otherDocs.filter(
+        (d) => d.person === finalPerson && sameDocName(d.name, name) && !contentDupePaths.has(d.pathname),
+      )
     : [];
+  // Only replace documents that still match what's typed now.
+  const activeTargets = replaceTargets.filter((p) => nameMatches.some((d) => d.pathname === p));
 
   function changeName(value: string) {
     const upper = value.toUpperCase();
@@ -123,6 +132,14 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
     }
   }
 
+  function setChoice(index: number, choice: Item["choice"]) {
+    setItems(items.map((it, j) => (j === index ? { ...it, choice } : it)));
+  }
+
+  function toggleReplace(pathname: string) {
+    setReplaceTargets((prev) => (prev.includes(pathname) ? prev.filter((p) => p !== pathname) : [...prev, pathname]));
+  }
+
   function removeItem(index: number) {
     const item = items[index];
     if (item.preview) URL.revokeObjectURL(item.preview);
@@ -138,18 +155,22 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
 
     try {
       if (editDoc) {
-        const res = await fetch("/api/docs", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pathname: editDoc.pathname, name: finalName, category, person }),
-        });
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Could not save");
+        await api("PATCH", { pathname: editDoc.pathname, name: finalName, category, person });
       } else {
         for (let i = 0; i < items.length; i++) {
-          const { hash } = items[i];
+          const { hash, choice } = items[i];
+          const docName = items.length > 1 ? `${finalName} - PAGE ${i + 1}` : finalName;
+          const saved = contentDupes[i]?.saved;
+
+          // Same file is already saved: just move the saved one to the new details.
+          if (saved && choice === "replace") {
+            await api("PATCH", { pathname: saved.pathname, name: docName, category, person });
+            setProgress(Math.round(((i + 1) / items.length) * 100));
+            continue;
+          }
+
           const file = await compressImage(items[i].file);
           const ext = fileExtension(file.name) || EXT_BY_MIME[file.type] || "";
-          const docName = items.length > 1 ? `${finalName} - PAGE ${i + 1}` : finalName;
           const pathname = buildPathname({ name: docName, category, person, ext, hash });
           await upload(pathname, file, {
             access: "private",
@@ -160,6 +181,8 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
               setProgress(Math.round(((i + percentage / 100) / items.length) * 100)),
           });
         }
+        // The new file is safely saved, so the old version it replaces can go.
+        for (const pathname of activeTargets) await api("DELETE", { pathname });
       }
       onSaved();
     } catch (e) {
@@ -172,9 +195,11 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
   const personChoices = Array.from(new Set([DEFAULT_PERSON, ...persons])).filter(Boolean);
 
   let saveLabel = editing ? "Save changes" : "Save document";
-  if (busy) saveLabel = editing ? "Saving…" : `Uploading… ${progress}%`;
+  if (busy) saveLabel = editing ? "Saving…" : `Saving… ${progress}%`;
   else if (checking) saveLabel = "Checking files…";
-  else if (dupeCount > 0) saveLabel = "Save anyway (keep a second copy)";
+  else if (undecided > 0) saveLabel = "Choose Replace or Keep both above";
+  else if (activeTargets.length > 0 || items.some((it, i) => contentDupes[i]?.saved && it.choice === "replace"))
+    saveLabel = "Save and replace old";
 
   return (
     <div className="overlay" onClick={busy ? undefined : onClose}>
@@ -248,14 +273,33 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
                   {dupe.saved ? (
                     <>
                       <ExistingDoc doc={dupe.saved} />
-                      <div className="warning-actions">
-                        <a className="btn small" href={fileUrl(dupe.saved)} target="_blank" rel="noreferrer">
-                          {fileKind(dupe.saved.ext) === "other" ? "⬇️ Download it" : "👁️ View it"}
-                        </a>
+                      <a className="view-link" href={fileUrl(dupe.saved)} target="_blank" rel="noreferrer">
+                        {fileKind(dupe.saved.ext) === "other" ? "⬇️ Download it to check" : "👁️ View it"}
+                      </a>
+                      <div className="choice-row">
+                        <button
+                          className={`btn small ${items[i].choice === "replace" ? "selected" : ""}`}
+                          onClick={() => setChoice(i, "replace")}
+                          disabled={busy}
+                        >
+                          🔁 Replace old one
+                        </button>
+                        <button
+                          className={`btn small ${items[i].choice === "keep" ? "selected" : ""}`}
+                          onClick={() => setChoice(i, "keep")}
+                          disabled={busy}
+                        >
+                          ➕ Keep both
+                        </button>
                         <button className="btn small" onClick={() => removeItem(i)} disabled={busy}>
-                          Don’t upload this
+                          ✕ Don’t upload
                         </button>
                       </div>
+                      {items[i].choice === "replace" && (
+                        <div className="hint">
+                          The saved copy will be renamed to what you type below. No second copy is made.
+                        </div>
+                      )}
                     </>
                   ) : (
                     <>
@@ -293,7 +337,7 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
           <span className="label">{editing ? "Whose document?" : "3. Whose document?"}</span>
           <input
             className="input caps"
-            placeholder="e.g. MOM, DAD, VYOM"
+            placeholder="Select from below or type new"
             value={person}
             onChange={(e) => setPerson(e.target.value.toUpperCase())}
             autoCapitalize="characters"
@@ -323,12 +367,29 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
             {nameMatches.slice(0, 3).map((d) => (
               <div className="warning-row" key={d.pathname}>
                 <ExistingDoc doc={d} />
-                <a className="btn small" href={fileUrl(d)} target="_blank" rel="noreferrer">
-                  {fileKind(d.ext) === "other" ? "⬇️" : "👁️"} View
-                </a>
+                <div className="row-actions">
+                  <a className="btn small" href={fileUrl(d)} target="_blank" rel="noreferrer">
+                    {fileKind(d.ext) === "other" ? "⬇️" : "👁️"} View
+                  </a>
+                  {!editing && (
+                    <button
+                      className={`btn small ${activeTargets.includes(d.pathname) ? "selected" : ""}`}
+                      onClick={() => toggleReplace(d.pathname)}
+                      disabled={busy}
+                    >
+                      {activeTargets.includes(d.pathname) ? "✓ Will replace" : "🔁 Replace"}
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
-            <div className="hint">If this is a newer copy, you can still save it.</div>
+            <div className="hint">
+              {activeTargets.length > 0
+                ? "The old version will be deleted after the new one is saved."
+                : editing
+                  ? "You can still save with this name."
+                  : "If this is a newer copy, tap Replace to delete the old one, or just save to keep both."}
+            </div>
           </div>
         )}
 
@@ -359,12 +420,21 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
           </div>
         )}
 
-        <button className="btn primary block" onClick={save} disabled={busy || checking}>
+        <button className="btn primary block" onClick={save} disabled={busy || checking || undecided > 0}>
           {saveLabel}
         </button>
       </div>
     </div>
   );
+}
+
+async function api(method: "PATCH" | "DELETE", body: Record<string, string>) {
+  const res = await fetch("/api/docs", {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Could not save");
 }
 
 function ExistingDoc({ doc }: { doc: Doc }) {

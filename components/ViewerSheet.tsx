@@ -25,6 +25,7 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
   const kind = fileKind(doc.ext);
   const cat = categoryInfo(doc.category);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmKeep, setConfirmKeep] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [wide, setWide] = useState(false);
@@ -52,6 +53,24 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
       if ((e as Error).name !== "AbortError") setError("Could not share. Please try Download.");
     }
     setBusy("");
+  }
+
+  async function keepOnlyThis() {
+    if (!confirmKeep) return setConfirmKeep(true);
+    setBusy("keep");
+    setError("");
+    for (const d of duplicates) {
+      const res = await fetch("/api/docs", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pathname: d.pathname }),
+      });
+      if (!res.ok) {
+        setBusy("");
+        return setError("Could not delete all the copies. Please try again.");
+      }
+    }
+    onDeleted();
   }
 
   async function remove() {
@@ -123,7 +142,13 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
                 </span>
               </button>
             ))}
-            <div className="hint">If it’s an extra copy, open it and tap Delete.</div>
+            <button className="btn block keep-btn" onClick={keepOnlyThis} disabled={busy === "keep"}>
+              {busy === "keep"
+                ? "Deleting copies…"
+                : confirmKeep
+                  ? `Tap again to delete ${duplicates.length === 1 ? "the other copy" : `${duplicates.length} other copies`}`
+                  : "✅ Keep this one, delete the other copies"}
+            </button>
           </div>
         )}
 

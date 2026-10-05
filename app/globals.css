@@ -463,6 +463,11 @@ button {
   font-weight: 650;
 }
 
+.input.caps::placeholder {
+  text-transform: none;
+  font-weight: 400;
+}
+
 .pick-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -761,6 +766,40 @@ button {
   font-size: 0.68rem;
   font-weight: 700;
   text-align: center;
+}
+
+.btn.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.choice-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.choice-row .btn:last-child {
+  grid-column: 1 / -1;
+}
+
+.view-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.row-actions {
+  display: flex;
+  flex: none;
+  gap: 6px;
+}
+
+.keep-btn {
+  margin-top: 4px;
 }
 
 /* ---------- Login ---------- */
