@@ -253,7 +253,7 @@ export default function Home() {
           onOpenDoc={(doc) => setSheet({ type: "view", doc })}
           onClose={closeSheet}
           onEdit={() => setSheet({ type: "edit", doc: sheet.doc })}
-          onDeleted={() => {
+          onChanged={() => {
             closeSheet();
             load();
           }}

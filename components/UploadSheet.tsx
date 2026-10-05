@@ -1,13 +1,10 @@
 "use client";
 
-import { upload } from "@vercel/blob/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fileUrl, formatDate } from "@/components/ViewerSheet";
-import { compressImage } from "@/lib/compress";
 import {
   CATEGORIES,
   DEFAULT_PERSON,
-  buildPathname,
   categoryInfo,
   cleanName,
   fileExtension,
@@ -20,6 +17,7 @@ import {
   type CategoryKey,
   type Doc,
 } from "@/lib/docs";
+import { docsApi, uploadDocument } from "@/lib/upload";
 
 type Props = {
   docs: Doc[];
@@ -36,24 +34,6 @@ type Item = {
   hash?: string;
   /** What to do when this exact file is already saved. */
   choice?: "replace" | "keep";
-};
-
-const MIME_BY_EXT: Record<string, string> = {
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  png: "image/png",
-  webp: "image/webp",
-  heic: "image/heic",
-  heif: "image/heif",
-  pdf: "application/pdf",
-};
-
-const EXT_BY_MIME: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-  "image/heic": "heic",
-  "application/pdf": "pdf",
 };
 
 // Camera and WhatsApp names like "IMG_20240105_1234" aren't useful as document names.
@@ -155,7 +135,7 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
 
     try {
       if (editDoc) {
-        await api("PATCH", { pathname: editDoc.pathname, name: finalName, category, person });
+        await docsApi("PATCH", { pathname: editDoc.pathname, name: finalName, category, person });
       } else {
         for (let i = 0; i < items.length; i++) {
           const { hash, choice } = items[i];
@@ -164,25 +144,22 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
 
           // Same file is already saved: just move the saved one to the new details.
           if (saved && choice === "replace") {
-            await api("PATCH", { pathname: saved.pathname, name: docName, category, person });
+            await docsApi("PATCH", { pathname: saved.pathname, name: docName, category, person });
             setProgress(Math.round(((i + 1) / items.length) * 100));
             continue;
           }
 
-          const file = await compressImage(items[i].file);
-          const ext = fileExtension(file.name) || EXT_BY_MIME[file.type] || "";
-          const pathname = buildPathname({ name: docName, category, person, ext, hash });
-          await upload(pathname, file, {
-            access: "private",
-            handleUploadUrl: "/api/upload",
-            contentType: file.type || MIME_BY_EXT[ext] || "application/octet-stream",
-            multipart: file.size > 8 * 1024 * 1024,
-            onUploadProgress: ({ percentage }) =>
-              setProgress(Math.round(((i + percentage / 100) / items.length) * 100)),
+          await uploadDocument({
+            file: items[i].file,
+            hash,
+            name: docName,
+            category,
+            person,
+            onProgress: (percentage) => setProgress(Math.round(((i + percentage / 100) / items.length) * 100)),
           });
         }
         // The new file is safely saved, so the old version it replaces can go.
-        for (const pathname of activeTargets) await api("DELETE", { pathname });
+        for (const pathname of activeTargets) await docsApi("DELETE", { pathname });
       }
       onSaved();
     } catch (e) {
@@ -426,15 +403,6 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
       </div>
     </div>
   );
-}
-
-async function api(method: "PATCH" | "DELETE", body: Record<string, string>) {
-  const res = await fetch("/api/docs", {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Could not save");
 }
 
 function ExistingDoc({ doc }: { doc: Doc }) {

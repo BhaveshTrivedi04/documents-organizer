@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { categoryInfo, fileIcon, fileKind, formatSize, type Doc } from "@/lib/docs";
+import { useEffect, useRef, useState } from "react";
+import { categoryInfo, fileIcon, fileKind, formatSize, hashFile, sameHash, type Doc } from "@/lib/docs";
+import { docsApi, uploadDocument } from "@/lib/upload";
 
 type Props = {
   doc: Doc;
@@ -10,7 +11,8 @@ type Props = {
   onOpenDoc: (doc: Doc) => void;
   onClose: () => void;
   onEdit: () => void;
-  onDeleted: () => void;
+  /** Called after this document was deleted or replaced. */
+  onChanged: () => void;
 };
 
 export function fileUrl(doc: Doc, download = false) {
@@ -21,7 +23,7 @@ export function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdit, onDeleted }: Props) {
+export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdit, onChanged }: Props) {
   const kind = fileKind(doc.ext);
   const cat = categoryInfo(doc.category);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -30,6 +32,10 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
   const [error, setError] = useState("");
   const [wide, setWide] = useState(false);
   const [canShare, setCanShare] = useState(false);
+  const [replacing, setReplacing] = useState(false);
+  const [progress, setProgress] = useState<number | null>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const filesRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // Phones can't show PDFs inside the page, so they get an "Open" button instead.
@@ -59,18 +65,44 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
     if (!confirmKeep) return setConfirmKeep(true);
     setBusy("keep");
     setError("");
-    for (const d of duplicates) {
-      const res = await fetch("/api/docs", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pathname: d.pathname }),
-      });
-      if (!res.ok) {
-        setBusy("");
-        return setError("Could not delete all the copies. Please try again.");
-      }
+    try {
+      for (const d of duplicates) await docsApi("DELETE", { pathname: d.pathname });
+      onChanged();
+    } catch {
+      setBusy("");
+      setError("Could not delete all the copies. Please try again.");
     }
-    onDeleted();
+  }
+
+  // Saves the new file under the same name, person and type, then deletes the
+  // old file. The old one is only removed once the new one is safely saved.
+  async function replaceWith(file: File | undefined) {
+    if (!file) return;
+    setError("");
+    setBusy("replace");
+    setProgress(0);
+    try {
+      const hash = await hashFile(file).catch(() => "");
+      if (sameHash(hash, doc.hash)) {
+        setBusy("");
+        setProgress(null);
+        return setError("That is the same file that is already saved here. Choose a different one.");
+      }
+      await uploadDocument({
+        file,
+        hash,
+        name: doc.name,
+        category: doc.category,
+        person: doc.person,
+        onProgress: (percentage) => setProgress(Math.round(percentage)),
+      });
+      await docsApi("DELETE", { pathname: doc.pathname });
+      onChanged();
+    } catch (e) {
+      setBusy("");
+      setProgress(null);
+      setError(`Could not replace. ${(e as Error).message || "Please check your internet and try again."}`);
+    }
   }
 
   async function remove() {
@@ -81,13 +113,13 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pathname: doc.pathname }),
     });
-    if (res.ok) return onDeleted();
+    if (res.ok) return onChanged();
     setBusy("");
     setError("Could not delete. Please try again.");
   }
 
   return (
-    <div className="overlay" onClick={onClose}>
+    <div className="overlay" onClick={busy === "replace" ? undefined : onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="sheet-head">
           <h2>{doc.name}</h2>
@@ -154,6 +186,56 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
 
         {error && <div className="error">{error}</div>}
 
+        {replacing && (
+          <div className="warning soft">
+            <div className="warning-title">🔄 Replace with a new file</div>
+            <div className="hint" style={{ marginTop: 0 }}>
+              The new file keeps the name {doc.name}, person {doc.person} and type {cat.label}. The old file is deleted
+              after the new one is saved.
+            </div>
+            {busy === "replace" ? (
+              <>
+                <div className="progress" style={{ marginTop: 12 }} aria-label="Upload progress">
+                  <div style={{ width: `${progress ?? 0}%` }} />
+                </div>
+                <div className="hint">Saving new file… {progress ?? 0}%</div>
+              </>
+            ) : (
+              <div className="choice-row">
+                <button className="btn small" onClick={() => cameraRef.current?.click()}>
+                  📷 Take photo
+                </button>
+                <button className="btn small" onClick={() => filesRef.current?.click()}>
+                  📄 Choose file
+                </button>
+                <button className="btn small" onClick={() => setReplacing(false)}>
+                  Cancel
+                </button>
+              </div>
+            )}
+            <input
+              ref={cameraRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              hidden
+              onChange={(e) => {
+                replaceWith(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
+            <input
+              ref={filesRef}
+              type="file"
+              hidden
+              onChange={(e) => {
+                replaceWith(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
+          </div>
+        )}
+
         <div className="actions">
           {kind !== "other" && (
             <a className="btn primary" href={fileUrl(doc)} target="_blank" rel="noreferrer">
@@ -168,10 +250,20 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
               {busy === "share" ? "Preparing…" : "📤 Share (WhatsApp, Email…)"}
             </button>
           )}
-          <button className="btn" onClick={onEdit}>
+          <button className="btn" onClick={onEdit} disabled={busy === "replace"}>
             ✏️ Edit
           </button>
-          <button className="btn danger" onClick={remove} disabled={busy === "delete"}>
+          <button
+            className="btn"
+            onClick={() => {
+              setError("");
+              setReplacing(true);
+            }}
+            disabled={busy === "replace"}
+          >
+            🔄 Replace file
+          </button>
+          <button className="btn danger wide" onClick={remove} disabled={busy === "delete" || busy === "replace"}>
             {busy === "delete" ? "Deleting…" : confirmDelete ? "Tap again to delete" : "🗑️ Delete"}
           </button>
         </div>
