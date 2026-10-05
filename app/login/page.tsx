@@ -27,16 +27,22 @@ export default function LoginPage() {
 
   return (
     <main className="login">
-      <div className="login-card">
+      <div className="login-art" aria-hidden="true">
         <img src="/icon.svg" alt="" />
-        <h1>Family Documents</h1>
-        <p>Enter the family password to continue.</p>
+      </div>
+      <div className="login-card">
+        <h1 className="serif">
+          Every family paper,
+          <br />
+          one calm place
+        </h1>
+        <p>Aadhar, PAN, policies and more. Find them in seconds.</p>
         <form onSubmit={submit}>
           {error && <div className="error">{error}</div>}
           <input
             className="input"
             type="password"
-            placeholder="Password"
+            placeholder="Family password"
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}

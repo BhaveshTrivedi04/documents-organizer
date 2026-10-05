@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import DetailsFields from "@/components/DetailsFields";
+import Icon, { FileGlyph } from "@/components/Icon";
 import { fileUrl, formatDate } from "@/components/ViewerSheet";
 import {
   DEFAULT_PERSON,
   categoryInfo,
   cleanName,
   fileExtension,
-  fileIcon,
   fileKind,
   guessCategory,
   hashFile,
@@ -223,10 +223,13 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
     <div className="overlay" onClick={busy ? undefined : onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="sheet-head">
-          <h2>{editing ? "Edit details" : "Add a document"}</h2>
-          <button className="close" onClick={onClose} disabled={busy} aria-label="Close">
-            ✕
+          <button className="round-btn" onClick={onClose} disabled={busy} aria-label="Close">
+            <Icon name="back" />
           </button>
+          <div className="sheet-title">
+            <h2 className="serif">{editing ? "Edit details" : "New document"}</h2>
+            <div className="sheet-sub">{editing ? editDoc!.name : "Photo, PDF or any file"}</div>
+          </div>
         </div>
 
         {!editing && (
@@ -234,11 +237,12 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
             <span className="label">1. Photo or file</span>
             <div className="pick-row">
               <button className="btn pick" onClick={() => cameraRef.current?.click()} disabled={busy}>
-                <span className="emoji">📷</span>
+                <Icon name="camera" size={26} stroke={1.5} />
                 {items.length > 0 ? "Take another photo" : "Take photo"}
               </button>
               <button className="btn pick" onClick={() => filesRef.current?.click()} disabled={busy}>
-                <span className="emoji">📄</span>Choose any file
+                <Icon name="file" size={26} stroke={1.5} />
+                Choose a file
               </button>
             </div>
             <input
@@ -267,26 +271,26 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
                 {items.map((it, i) => (
                   <div className="file-cell" key={i}>
                     <div className={`file-prev ${contentDupes[i] ? "dupe" : ""}`}>
-                      {it.preview ? <img src={it.preview} alt="" /> : fileIcon(fileExtension(it.file.name))}
+                      {it.preview ? <img src={it.preview} alt="" /> : <FileGlyph ext={fileExtension(it.file.name)} size={30} />}
                       {items.length > 1 && <span className="page-badge">{i + 1}</span>}
                       {contentDupes[i] && <span className="dupe-badge">Already saved</span>}
                       {!busy && (
                         <button className="remove" aria-label="Remove" onClick={() => removeItem(i)}>
-                          ✕
+                          <Icon name="x" size={13} stroke={2.4} />
                         </button>
                       )}
                     </div>
                     {items.length > 1 && !busy && (
                       <div className="move-row">
                         <button aria-label="Move earlier" disabled={i === 0} onClick={() => moveItem(i, -1)}>
-                          ◀
+                          <Icon name="left" size={15} />
                         </button>
                         <button
                           aria-label="Move later"
                           disabled={i === items.length - 1}
                           onClick={() => moveItem(i, 1)}
                         >
-                          ▶
+                          <Icon name="right" size={15} />
                         </button>
                       </div>
                     )}
@@ -306,7 +310,7 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
                   <strong>Combine into one PDF</strong>
                   <span className="hint">
                     {combine
-                      ? `Saved as one document with ${items.length} pages, in the order above. Use ◀ ▶ to reorder.`
+                      ? `Saved as one document with ${items.length} pages, in the order above. Use the arrows to reorder.`
                       : `Saved as ${items.length} separate documents (Page 1, Page 2…).`}
                   </span>
                 </span>
@@ -322,13 +326,13 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
               !dupe ? null : (
                 <div className="warning" key={i}>
                   <div className="warning-title">
-                    ⚠️ {items.length > 1 ? `File ${i + 1} is` : "This file is"} already saved
+                    <Icon name="copy" size={17} /> {items.length > 1 ? `File ${i + 1} is` : "This file is"} already saved
                   </div>
                   {dupe.saved ? (
                     <>
                       <ExistingDoc doc={dupe.saved} />
                       <a className="view-link" href={fileUrl(dupe.saved)} target="_blank" rel="noreferrer">
-                        {fileKind(dupe.saved.ext) === "other" ? "⬇️ Download it to check" : "👁️ View it"}
+                        {fileKind(dupe.saved.ext) === "other" ? "Download it to check" : "View it"} →
                       </a>
                       <div className="choice-row">
                         <button
@@ -336,17 +340,17 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
                           onClick={() => setChoice(i, "replace")}
                           disabled={busy}
                         >
-                          🔁 Replace old one
+                          <Icon name="replace" size={16} /> Replace old one
                         </button>
                         <button
                           className={`btn small ${items[i].choice === "keep" ? "selected" : ""}`}
                           onClick={() => setChoice(i, "keep")}
                           disabled={busy}
                         >
-                          ➕ Keep both
+                          <Icon name="plus" size={16} /> Keep both
                         </button>
                         <button className="btn small" onClick={() => removeItem(i)} disabled={busy}>
-                          ✕ Don’t upload
+                          <Icon name="x" size={16} /> Don’t upload
                         </button>
                       </div>
                       {items[i].choice === "replace" && (
@@ -390,7 +394,7 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
             nameMatches.length > 0 && (
               <div className="warning soft">
                 <div className="warning-title">
-                  ℹ️ {finalPerson} already has{" "}
+                  <Icon name="info" size={17} /> {finalPerson} already has{" "}
                   {nameMatches.length === 1 ? "a document" : `${nameMatches.length} documents`} with this name
                 </div>
                 {nameMatches.slice(0, 3).map((d) => (
@@ -398,7 +402,7 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
                     <ExistingDoc doc={d} />
                     <div className="row-actions">
                       <a className="btn small" href={fileUrl(d)} target="_blank" rel="noreferrer">
-                        {fileKind(d.ext) === "other" ? "⬇️" : "👁️"} View
+                        <Icon name={fileKind(d.ext) === "other" ? "download" : "eye"} size={16} /> View
                       </a>
                       {!editing && (
                         <button
@@ -406,7 +410,15 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
                           onClick={() => toggleReplace(d.pathname)}
                           disabled={busy}
                         >
-                          {activeTargets.includes(d.pathname) ? "✓ Will replace" : "🔁 Replace"}
+                          {activeTargets.includes(d.pathname) ? (
+                            <>
+                              <Icon name="check" size={16} /> Will replace
+                            </>
+                          ) : (
+                            <>
+                              <Icon name="replace" size={16} /> Replace
+                            </>
+                          )}
                         </button>
                       )}
                     </div>
@@ -416,7 +428,7 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
                   {activeTargets.length > 0
                     ? "The old version will be deleted after the new one is saved."
                     : editing
-                      ? "You can still save with this name. To join them into one document, use Select → Merge on the main screen."
+                      ? "You can still save with this name. To join them into one document, use Select, then Merge, on a list of documents."
                       : "If this is a newer copy, tap Replace to delete the old one, or just save to keep both."}
                 </div>
               </div>
@@ -445,10 +457,8 @@ export function ExistingDoc({ doc }: { doc: Doc }) {
     <div className="existing">
       <div className="doc-name">{doc.name}</div>
       <div className="doc-meta">
-        <span className="pill">{doc.person}</span>
-        <span>
-          {cat.icon} {cat.label}
-        </span>
+        <span>{doc.person}</span>
+        <span>{cat.label}</span>
         <span>Added {formatDate(doc.uploadedAt)}</span>
       </div>
     </div>

@@ -1,3 +1,5 @@
+import type { IconName } from "@/components/Icon";
+
 // Shared between the browser and the server.
 //
 // Every document is one file in Vercel Blob. Its details live in the pathname so
@@ -8,16 +10,16 @@
 // random part keeps each pathname unique.
 
 export const CATEGORIES = [
-  { key: "ID", label: "ID Proofs", icon: "🪪" },
-  { key: "FINANCE", label: "Bank & Tax", icon: "🏦" },
-  { key: "INSURANCE", label: "Insurance", icon: "🛡️" },
-  { key: "MEDICAL", label: "Medical", icon: "🏥" },
-  { key: "EDUCATION", label: "Education", icon: "🎓" },
-  { key: "PROPERTY", label: "Property", icon: "🏠" },
-  { key: "VEHICLE", label: "Vehicle", icon: "🚗" },
-  { key: "BILLS", label: "Bills", icon: "🧾" },
-  { key: "OTHER", label: "Other", icon: "📁" },
-] as const;
+  { key: "ID", label: "ID Proofs", icon: "idcard" },
+  { key: "FINANCE", label: "Bank & Tax", icon: "bank" },
+  { key: "INSURANCE", label: "Insurance", icon: "shield" },
+  { key: "MEDICAL", label: "Medical", icon: "medical" },
+  { key: "EDUCATION", label: "Education", icon: "education" },
+  { key: "PROPERTY", label: "Property", icon: "property" },
+  { key: "VEHICLE", label: "Vehicle", icon: "vehicle" },
+  { key: "BILLS", label: "Bills", icon: "bills" },
+  { key: "OTHER", label: "Other", icon: "folder" },
+] as const satisfies readonly { key: string; label: string; icon: IconName }[];
 
 export type CategoryKey = (typeof CATEGORIES)[number]["key"];
 
@@ -37,6 +39,17 @@ export type Doc = {
 
 export function categoryInfo(key: string) {
   return CATEGORIES.find((c) => c.key === key) ?? CATEGORIES[CATEGORIES.length - 1];
+}
+
+/** "Jayshree Baa" -> "JB", "Vyom" -> "V". */
+export function initials(person: string): string {
+  return person
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
 }
 
 export function isCategory(key: string): key is CategoryKey {
@@ -214,16 +227,6 @@ export function fileKind(ext: string): "image" | "pdf" | "other" {
   return "other";
 }
 
-export function fileIcon(ext: string): string {
-  if (fileKind(ext) === "image") return "🖼️";
-  if (["doc", "docx", "odt", "rtf", "txt"].includes(ext)) return "📝";
-  if (["xls", "xlsx", "ods", "csv"].includes(ext)) return "📊";
-  if (["ppt", "pptx", "odp"].includes(ext)) return "📽️";
-  if (["zip", "rar", "7z"].includes(ext)) return "🗜️";
-  if (["mp4", "mov", "mp3", "m4a", "wav"].includes(ext)) return "🎞️";
-  return "📄";
-}
-
 /** "Aadhar Card - Page 2" and "aadhar card" are the same document name. */
 export function sameDocName(a: string, b: string): boolean {
   const base = (n: string) => searchKey(cleanName(n).replace(/ - Page \d+$/i, ""));
@@ -235,6 +238,17 @@ export function duplicateGroups(docs: Doc[]): Doc[][] {
   const byHash = new Map<string, Doc[]>();
   for (const d of docs) if (d.hash) byHash.set(d.hash, [...(byHash.get(d.hash) ?? []), d]);
   return [...byHash.values()].filter((g) => g.length > 1);
+}
+
+/** "Today", "Yesterday", "3 days ago", or "5 Oct 2026" for older dates. */
+export function relativeDate(iso: string): string {
+  const then = new Date(iso);
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startOfDay(new Date()) - startOfDay(then)) / 86400000);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days} days ago`;
+  return then.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
 export function formatSize(bytes: number): string {

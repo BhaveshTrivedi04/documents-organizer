@@ -28,7 +28,9 @@ export async function GET(request: Request) {
       "Content-Length": String(result.blob.size),
       "Content-Disposition": `${disposition}; filename="${fileName.replace(/"/g, "")}"`,
       "X-Content-Type-Options": "nosniff",
-      "Cache-Control": "private, max-age=3600",
+      // Each document's path is unique and never reused (replacing or renaming
+      // gives a new path), so the phone can keep its copy and open it instantly.
+      "Cache-Control": "private, max-age=31536000, immutable",
     },
   });
 }

@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import DetailsFields from "@/components/DetailsFields";
+import Icon, { FileGlyph } from "@/components/Icon";
+import LazyImage from "@/components/LazyImage";
 import { fileUrl } from "@/components/ViewerSheet";
 import {
   DEFAULT_PERSON,
   cleanName,
-  fileIcon,
   fileExtension,
   fileKind,
   hashFile,
@@ -126,10 +127,13 @@ export default function MergeSheet({ docs, initial, base, onClose, onSaved }: Pr
     <div className="overlay" onClick={busy ? undefined : onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="sheet-head">
-          <h2>{base ? `Add pages to ${base.name}` : "Merge into one document"}</h2>
-          <button className="close" onClick={onClose} disabled={busy} aria-label="Close">
-            ✕
+          <button className="round-btn" onClick={onClose} disabled={busy} aria-label="Close">
+            <Icon name="back" />
           </button>
+          <div className="sheet-title">
+            <h2 className="serif">{base ? "Add pages" : "Merge documents"}</h2>
+            <div className="sheet-sub">{base ? base.name : "Join them into one PDF"}</div>
+          </div>
         </div>
 
         <div className="field">
@@ -141,21 +145,21 @@ export default function MergeSheet({ docs, initial, base, onClose, onSaved }: Pr
                 <div className="thumb small">
                   {part.doc ? (
                     fileKind(part.doc.ext) === "image" ? (
-                      <img src={fileUrl(part.doc)} alt="" />
+                      <LazyImage src={fileUrl(part.doc)} fallback={<FileGlyph ext={part.doc.ext} size={22} />} />
                     ) : (
-                      fileIcon(part.doc.ext)
+                      <FileGlyph ext={part.doc.ext} size={22} />
                     )
                   ) : part.preview ? (
                     <img src={part.preview} alt="" />
                   ) : (
-                    fileIcon(fileExtension(part.file!.name))
+                    <FileGlyph ext={fileExtension(part.file!.name)} size={22} />
                   )}
                 </div>
                 <div className="page-label">
                   <div className="doc-name">{part.doc ? part.doc.name : "New page"}</div>
                   <div className="doc-meta">
                     {part.doc ? (
-                      <span className="pill">{part.doc.person}</span>
+                      <span>{part.doc.person}</span>
                     ) : (
                       <span>{part.file!.type === "application/pdf" ? "PDF from phone" : "Photo from phone"}</span>
                     )}
@@ -165,14 +169,14 @@ export default function MergeSheet({ docs, initial, base, onClose, onSaved }: Pr
                 {!busy && (
                   <div className="page-actions">
                     <button aria-label="Move up" disabled={i === 0} onClick={() => move(i, -1)}>
-                      ▲
+                      <Icon name="up" size={16} />
                     </button>
                     <button aria-label="Move down" disabled={i === parts.length - 1} onClick={() => move(i, 1)}>
-                      ▼
+                      <Icon name="down" size={16} />
                     </button>
                     {!(base && part.doc) && (
                       <button aria-label="Remove page" onClick={() => remove(i)}>
-                        ✕
+                        <Icon name="x" size={16} />
                       </button>
                     )}
                   </div>
@@ -183,10 +187,10 @@ export default function MergeSheet({ docs, initial, base, onClose, onSaved }: Pr
 
           <div className="pick-row" style={{ marginTop: 10 }}>
             <button className="btn small" onClick={() => cameraRef.current?.click()} disabled={busy}>
-              📷 Add photo
+              <Icon name="camera" size={17} /> Add photo
             </button>
             <button className="btn small" onClick={() => filesRef.current?.click()} disabled={busy}>
-              📄 Add file
+              <Icon name="file" size={17} /> Add file
             </button>
           </div>
           <input
@@ -211,7 +215,7 @@ export default function MergeSheet({ docs, initial, base, onClose, onSaved }: Pr
               e.target.value = "";
             }}
           />
-          <div className="hint">Use ▲ ▼ to put the pages in order (e.g. front first, then back).</div>
+          <div className="hint">Use the arrows to put the pages in order (e.g. front first, then back).</div>
         </div>
 
         <DetailsFields

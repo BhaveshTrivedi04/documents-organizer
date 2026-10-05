@@ -1,5 +1,6 @@
 "use client";
 
+import Icon from "@/components/Icon";
 import { CATEGORIES, DEFAULT_PERSON, cleanName, type CategoryKey } from "@/lib/docs";
 
 type Props = {
@@ -91,7 +92,7 @@ export default function DetailsFields({
       {afterPerson}
 
       <div className="field">
-        <span className="label">{step(2, "Type")}</span>
+        <span className="label">{step(2, "Category")}</span>
         <div className="cat-grid">
           {CATEGORIES.map((c) => (
             <button
@@ -100,7 +101,7 @@ export default function DetailsFields({
               onClick={() => onCategory(c.key)}
               disabled={disabled}
             >
-              <span className="emoji">{c.icon}</span>
+              <Icon name={c.icon} size={22} />
               {c.label}
             </button>
           ))}

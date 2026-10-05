@@ -27,7 +27,7 @@ async function photoToJpeg(blob: Blob): Promise<ArrayBuffer> {
     bitmap = await createImageBitmap(blob, { imageOrientation: "from-image" });
   } catch {
     throw new Error(
-      "One of the photos can't be read on this phone (it may be a HEIC photo). Please take it again with the 📷 Take photo button.",
+      "One of the photos can't be read on this phone (it may be a HEIC photo). Please take it again with the Take photo button.",
     );
   }
   const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));

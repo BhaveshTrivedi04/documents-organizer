@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { categoryInfo, downloadFileName, fileIcon, fileKind, formatSize, hashFile, sameHash, type Doc } from "@/lib/docs";
+import Icon, { FileGlyph } from "@/components/Icon";
+import LazyImage from "@/components/LazyImage";
+import { categoryInfo, downloadFileName, fileKind, formatSize, hashFile, sameHash, type Doc } from "@/lib/docs";
 import { docsApi, uploadDocument } from "@/lib/upload";
 
 type Props = {
@@ -126,55 +128,63 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
     <div className="overlay" onClick={busy === "replace" ? undefined : onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="sheet-head">
-          <h2>{doc.name}</h2>
-          <button className="close" onClick={onClose} aria-label="Close">
-            ✕
+          <button className="round-btn" onClick={onClose} aria-label="Close" disabled={busy === "replace"}>
+            <Icon name="back" />
           </button>
+          <div className="sheet-title">
+            <h2 className="serif">{doc.name}</h2>
+            <div className="sheet-sub">
+              <span>
+                <Icon name="file" size={14} /> {doc.ext.toUpperCase() || "File"} · {formatSize(doc.size)}
+              </span>
+            </div>
+          </div>
         </div>
 
-        <div className="preview">
+        <div className="paper">
           {kind === "image" ? (
             <a href={fileUrl(doc)} target="_blank" rel="noreferrer">
-              <img src={fileUrl(doc)} alt={doc.name} />
+              <LazyImage src={fileUrl(doc)} alt={doc.name} showLabel />
             </a>
           ) : kind === "pdf" && wide ? (
             <iframe src={fileUrl(doc)} title={doc.name} />
           ) : (
             <div className="placeholder">
-              <div className="big">{fileIcon(doc.ext)}</div>
+              <FileGlyph ext={doc.ext} size={54} />
               <div>
                 {kind === "pdf"
-                  ? "Tap “Open” to view this PDF"
-                  : `No preview for ${doc.ext ? doc.ext.toUpperCase() + " files" : "this file"}. Tap “Download” to open it.`}
+                  ? "Tap Open to read this PDF"
+                  : `No preview for ${doc.ext ? doc.ext.toUpperCase() + " files" : "this file"}. Tap Download to open it.`}
               </div>
             </div>
           )}
         </div>
 
         <dl className="details">
-          <dt>Whose</dt>
-          <dd>{doc.person}</dd>
-          <dt>Type</dt>
-          <dd>
-            {cat.icon} {cat.label}
-          </dd>
-          <dt>Added</dt>
-          <dd>{formatDate(doc.uploadedAt)}</dd>
-          <dt>Size</dt>
-          <dd>
-            {formatSize(doc.size)} · {doc.ext.toUpperCase()}
-          </dd>
+          <div>
+            <dt>Whose</dt>
+            <dd>{doc.person}</dd>
+          </div>
+          <div>
+            <dt>Category</dt>
+            <dd>{cat.label}</dd>
+          </div>
+          <div>
+            <dt>Added</dt>
+            <dd>{formatDate(doc.uploadedAt)}</dd>
+          </div>
         </dl>
 
         {duplicates.length > 0 && (
           <div className="warning">
-            <div className="warning-title">⚠️ The same file is also saved as</div>
+            <div className="warning-title">
+              <Icon name="copy" size={17} /> Also saved as
+            </div>
             {duplicates.map((d) => (
               <button key={d.pathname} className="dupe-link" onClick={() => onOpenDoc(d)}>
                 <span className="doc-name">{d.name}</span>
                 <span className="doc-meta">
-                  <span className="pill">{d.person}</span>
-                  <span>Added {formatDate(d.uploadedAt)}</span>
+                  {d.person} · {formatDate(d.uploadedAt)}
                 </span>
               </button>
             ))}
@@ -183,7 +193,7 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
                 ? "Deleting copies…"
                 : confirmKeep
                   ? `Tap again to delete ${duplicates.length === 1 ? "the other copy" : `${duplicates.length} other copies`}`
-                  : "✅ Keep this one, delete the other copies"}
+                  : "Keep this one, delete the other copies"}
             </button>
           </div>
         )}
@@ -191,11 +201,12 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
         {error && <div className="error">{error}</div>}
 
         {replacing && (
-          <div className="warning soft">
-            <div className="warning-title">🔄 Replace with a new file</div>
+          <div className="panel">
+            <div className="panel-title">
+              <Icon name="replace" size={17} /> Replace with a new file
+            </div>
             <div className="hint" style={{ marginTop: 0 }}>
-              The new file keeps the name {doc.name}, person {doc.person} and type {cat.label}. The old file is deleted
-              after the new one is saved.
+              Keeps the name, person and category. The old file is deleted once the new one is saved.
             </div>
             {busy === "replace" ? (
               <>
@@ -207,12 +218,12 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
             ) : (
               <div className="choice-row">
                 <button className="btn small" onClick={() => cameraRef.current?.click()}>
-                  📷 Take photo
+                  <Icon name="camera" size={17} /> Take photo
                 </button>
                 <button className="btn small" onClick={() => filesRef.current?.click()}>
-                  📄 Choose file
+                  <Icon name="file" size={17} /> Choose file
                 </button>
-                <button className="btn small" onClick={() => setReplacing(false)}>
+                <button className="btn small ghost" onClick={() => setReplacing(false)}>
                   Cancel
                 </button>
               </div>
@@ -243,37 +254,48 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
         <div className="actions">
           {kind !== "other" && (
             <a className="btn primary" href={fileUrl(doc)} target="_blank" rel="noreferrer">
-              👁️ Open
+              <Icon name="eye" size={18} /> Open
             </a>
           )}
           <a className={`btn ${kind === "other" ? "primary wide" : ""}`} href={fileUrl(doc, true)}>
-            ⬇️ Download
+            <Icon name="download" size={18} /> Download
           </a>
           {canShare && (
             <button className="btn wide" onClick={share} disabled={busy === "share"}>
-              {busy === "share" ? "Preparing…" : "📤 Share (WhatsApp, Email…)"}
+              <Icon name="share" size={18} /> {busy === "share" ? "Preparing…" : "Share on WhatsApp, Email…"}
             </button>
           )}
-          <button className="btn" onClick={onEdit} disabled={busy === "replace"}>
-            ✏️ Edit
+        </div>
+
+        <div className="quick-actions">
+          <button className="quick" onClick={onEdit} disabled={busy === "replace"}>
+            <Icon name="edit" size={18} />
+            <span>Edit</span>
           </button>
+          {kind !== "other" && (
+            <button className="quick" onClick={onAddPages} disabled={busy === "replace"}>
+              <Icon name="filePlus" size={18} />
+              <span>Add pages</span>
+            </button>
+          )}
           <button
-            className="btn"
+            className="quick"
             onClick={() => {
               setError("");
               setReplacing(true);
             }}
             disabled={busy === "replace"}
           >
-            🔄 Replace file
+            <Icon name="replace" size={18} />
+            <span>Replace</span>
           </button>
-          {kind !== "other" && (
-            <button className="btn wide" onClick={onAddPages} disabled={busy === "replace"}>
-              ➕ Add pages (e.g. back side)
-            </button>
-          )}
-          <button className="btn danger wide" onClick={remove} disabled={busy === "delete" || busy === "replace"}>
-            {busy === "delete" ? "Deleting…" : confirmDelete ? "Tap again to delete" : "🗑️ Delete"}
+          <button
+            className={`quick danger ${confirmDelete ? "confirm" : ""}`}
+            onClick={remove}
+            disabled={busy === "delete" || busy === "replace"}
+          >
+            <Icon name="trash" size={18} />
+            <span>{busy === "delete" ? "Deleting…" : confirmDelete ? "Tap again" : "Delete"}</span>
           </button>
         </div>
       </div>
