@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import DetailsFields from "@/components/DetailsFields";
 import { fileUrl, formatDate } from "@/components/ViewerSheet";
 import {
-  CATEGORIES,
   DEFAULT_PERSON,
   categoryInfo,
   cleanName,
@@ -17,6 +17,7 @@ import {
   type CategoryKey,
   type Doc,
 } from "@/lib/docs";
+import { buildPdf, canMergeFile } from "@/lib/pdf";
 import { docsApi, uploadDocument } from "@/lib/upload";
 
 type Props = {
@@ -51,7 +52,9 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
   const [category, setCategory] = useState<CategoryKey>(editDoc?.category ?? "OTHER");
   const [categoryTouched, setCategoryTouched] = useState(editing);
   const [person, setPerson] = useState(editDoc?.person === DEFAULT_PERSON ? "" : (editDoc?.person ?? ""));
+  const [combine, setCombine] = useState(true);
   const [progress, setProgress] = useState<number | null>(null);
+  const [status, setStatus] = useState("");
   /** Saved documents (same name, different file) to delete once the new upload succeeds. */
   const [replaceTargets, setReplaceTargets] = useState<string[]>([]);
   const [error, setError] = useState("");
@@ -64,6 +67,10 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
 
   const persons = useMemo(() => Array.from(new Set(docs.map((d) => d.person))).sort(), [docs]);
   const otherDocs = useMemo(() => docs.filter((d) => d.pathname !== editDoc?.pathname), [docs, editDoc]);
+
+  // Several photos/PDFs (like the front and back of a card) can become one PDF.
+  const canCombine = items.length > 1 && items.every((it) => canMergeFile(it.file));
+  const combining = canCombine && combine;
 
   // For each selected file: the earlier file in this same batch that is
   // identical, or else the saved document with the same contents.
@@ -85,6 +92,7 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
     : [];
   // Only replace documents that still match what's typed now.
   const activeTargets = replaceTargets.filter((p) => nameMatches.some((d) => d.pathname === p));
+  const replacingSaved = items.filter((it, i) => contentDupes[i]?.saved && it.choice === "replace");
 
   function changeName(value: string) {
     setName(value);
@@ -116,6 +124,12 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
     setItems(items.map((it, j) => (j === index ? { ...it, choice } : it)));
   }
 
+  function moveItem(index: number, by: -1 | 1) {
+    const next = [...items];
+    [next[index], next[index + by]] = [next[index + by], next[index]];
+    setItems(next);
+  }
+
   function toggleReplace(pathname: string) {
     setReplaceTargets((prev) => (prev.includes(pathname) ? prev.filter((p) => p !== pathname) : [...prev, pathname]));
   }
@@ -136,6 +150,26 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
     try {
       if (editDoc) {
         await docsApi("PATCH", { pathname: editDoc.pathname, name: finalName, category, person });
+        return onSaved(`Details updated for ${finalName}`);
+      }
+
+      if (combining) {
+        setStatus("Making one PDF…");
+        const pdf = await buildPdf(items.map((it) => it.file));
+        setStatus("");
+        await uploadDocument({
+          file: pdf,
+          hash: await hashFile(pdf),
+          name: finalName,
+          category,
+          person,
+          onProgress: (percentage) => setProgress(Math.round(percentage)),
+        });
+        // Old separate copies are now pages inside the new PDF.
+        for (const it of replacingSaved) {
+          const saved = contentDupes[items.indexOf(it)]?.saved;
+          if (saved) await docsApi("DELETE", { pathname: saved.pathname });
+        }
       } else {
         for (let i = 0; i < items.length; i++) {
           const { hash, choice } = items[i];
@@ -158,30 +192,32 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
             onProgress: (percentage) => setProgress(Math.round(((i + percentage / 100) / items.length) * 100)),
           });
         }
-        // The new file is safely saved, so the old version it replaces can go.
-        for (const pathname of activeTargets) await docsApi("DELETE", { pathname });
       }
-      if (editDoc) onSaved(`Details updated for ${finalName}`);
-      else {
-        const replaced = activeTargets.length + items.filter((it, i) => contentDupes[i]?.saved && it.choice === "replace").length;
-        const what = items.length === 1 ? finalName : `${items.length} files for ${finalName}`;
-        onSaved(replaced > 0 ? `Saved ${what}. Old version replaced.` : `Saved ${what}`);
-      }
+      // The new file is safely saved, so the old version it replaces can go.
+      for (const pathname of activeTargets) await docsApi("DELETE", { pathname });
+
+      const replaced = activeTargets.length + replacingSaved.length > 0;
+      const what = combining
+        ? `${finalName} (${items.length} pages in one PDF)`
+        : items.length === 1
+          ? finalName
+          : `${items.length} files for ${finalName}`;
+      onSaved(replaced ? `Saved ${what}. Old version replaced.` : `Saved ${what}`);
     } catch (e) {
       setProgress(null);
+      setStatus("");
       setError(`Could not save. ${(e as Error).message || "Please check your internet and try again."}`);
     }
   }
 
   const busy = progress !== null;
-  const personChoices = Array.from(new Set([DEFAULT_PERSON, ...persons])).filter(Boolean);
 
   let saveLabel = editing ? "Save changes" : "Save document";
-  if (busy) saveLabel = editing ? "Saving…" : `Saving… ${progress}%`;
+  if (busy) saveLabel = status || (editing ? "Saving…" : `Saving… ${progress}%`);
   else if (checking) saveLabel = "Checking files…";
   else if (undecided > 0) saveLabel = "Choose Replace or Keep both above";
-  else if (activeTargets.length > 0 || items.some((it, i) => contentDupes[i]?.saved && it.choice === "replace"))
-    saveLabel = "Save and replace old";
+  else if (activeTargets.length > 0 || replacingSaved.length > 0) saveLabel = "Save and replace old";
+  else if (combining) saveLabel = `Save as one PDF (${items.length} pages)`;
 
   return (
     <div className="overlay" onClick={busy ? undefined : onClose}>
@@ -198,7 +234,8 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
             <span className="label">1. Photo or file</span>
             <div className="pick-row">
               <button className="btn pick" onClick={() => cameraRef.current?.click()} disabled={busy}>
-                <span className="emoji">📷</span>Take photo
+                <span className="emoji">📷</span>
+                {items.length > 0 ? "Take another photo" : "Take photo"}
               </button>
               <button className="btn pick" onClick={() => filesRef.current?.click()} disabled={busy}>
                 <span className="emoji">📄</span>Choose any file
@@ -226,11 +263,12 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
               }}
             />
             {items.length > 0 && (
-              <>
-                <div className="files">
-                  {items.map((it, i) => (
-                    <div className={`file-prev ${contentDupes[i] ? "dupe" : ""}`} key={i}>
+              <div className="files">
+                {items.map((it, i) => (
+                  <div className="file-cell" key={i}>
+                    <div className={`file-prev ${contentDupes[i] ? "dupe" : ""}`}>
                       {it.preview ? <img src={it.preview} alt="" /> : fileIcon(fileExtension(it.file.name))}
+                      {items.length > 1 && <span className="page-badge">{i + 1}</span>}
                       {contentDupes[i] && <span className="dupe-badge">Already saved</span>}
                       {!busy && (
                         <button className="remove" aria-label="Remove" onClick={() => removeItem(i)}>
@@ -238,20 +276,54 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
                         </button>
                       )}
                     </div>
-                  ))}
-                </div>
-                {items.length > 1 && (
-                  <div className="hint">
-                    {items.length} files will be saved as Page 1, Page 2… (e.g. front and back).
+                    {items.length > 1 && !busy && (
+                      <div className="move-row">
+                        <button aria-label="Move earlier" disabled={i === 0} onClick={() => moveItem(i, -1)}>
+                          ◀
+                        </button>
+                        <button
+                          aria-label="Move later"
+                          disabled={i === items.length - 1}
+                          onClick={() => moveItem(i, 1)}
+                        >
+                          ▶
+                        </button>
+                      </div>
+                    )}
                   </div>
-                )}
-              </>
+                ))}
+              </div>
+            )}
+
+            {items.length === 1 && canMergeFile(items[0].file) && (
+              <div className="hint">Has a back side too (like a driving licence)? Tap “Take another photo”.</div>
+            )}
+
+            {canCombine && (
+              <label className="toggle">
+                <input type="checkbox" checked={combine} onChange={(e) => setCombine(e.target.checked)} disabled={busy} />
+                <span>
+                  <strong>Combine into one PDF</strong>
+                  <span className="hint">
+                    {combine
+                      ? `Saved as one document with ${items.length} pages, in the order above. Use ◀ ▶ to reorder.`
+                      : `Saved as ${items.length} separate documents (Page 1, Page 2…).`}
+                  </span>
+                </span>
+              </label>
+            )}
+            {items.length > 1 && !canCombine && (
+              <div className="hint">
+                {items.length} files will be saved as Page 1, Page 2… (only photos and PDFs can be combined into one PDF).
+              </div>
             )}
 
             {contentDupes.map((dupe, i) =>
               !dupe ? null : (
                 <div className="warning" key={i}>
-                  <div className="warning-title">⚠️ This file is already saved</div>
+                  <div className="warning-title">
+                    ⚠️ {items.length > 1 ? `File ${i + 1} is` : "This file is"} already saved
+                  </div>
                   {dupe.saved ? (
                     <>
                       <ExistingDoc doc={dupe.saved} />
@@ -279,7 +351,9 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
                       </div>
                       {items[i].choice === "replace" && (
                         <div className="hint">
-                          The saved copy will be renamed to what you type below. No second copy is made.
+                          {combining
+                            ? "The old separate copy will be deleted, because it will be a page inside the new PDF."
+                            : "The saved copy will be renamed to what you type below. No second copy is made."}
                         </div>
                       )}
                     </>
@@ -299,111 +373,56 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
           </div>
         )}
 
-        <div className="field">
-          <label className="label" htmlFor="doc-name">
-            {editing ? "Name" : "2. Name"}
-          </label>
-          <input
-            id="doc-name"
-            className="input"
-            placeholder="e.g. Vyom Aadhar Card"
-            value={name}
-            onChange={(e) => changeName(e.target.value)}
-            autoCapitalize="words"
-            autoComplete="off"
-            disabled={busy}
-          />
-          {cleanName(name) && cleanName(name) !== name.trim() && (
-            <div className="hint">
-              Will be saved as <strong>{cleanName(name)}</strong>
-            </div>
-          )}
-        </div>
-
-        <div className="field">
-          <span className="label">{editing ? "Whose document?" : "3. Whose document?"}</span>
-          <input
-            className="input"
-            placeholder="Select from below or type new"
-            value={person}
-            onChange={(e) => setPerson(e.target.value)}
-            autoCapitalize="words"
-            autoComplete="off"
-            disabled={busy}
-          />
-          {cleanName(person) && cleanName(person) !== person.trim() && (
-            <div className="hint">
-              Will be saved as <strong>{cleanName(person)}</strong>
-            </div>
-          )}
-          <div className="chip-wrap">
-            {personChoices.map((p) => (
-              <button
-                key={p}
-                className={`chip small ${finalPerson === p ? "active" : ""}`}
-                onClick={() => setPerson(p === DEFAULT_PERSON ? "" : p)}
-                disabled={busy}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {nameMatches.length > 0 && (
-          <div className="warning soft">
-            <div className="warning-title">
-              ℹ️ {finalPerson} already has {nameMatches.length === 1 ? "a document" : `${nameMatches.length} documents`}{" "}
-              with this name
-            </div>
-            {nameMatches.slice(0, 3).map((d) => (
-              <div className="warning-row" key={d.pathname}>
-                <ExistingDoc doc={d} />
-                <div className="row-actions">
-                  <a className="btn small" href={fileUrl(d)} target="_blank" rel="noreferrer">
-                    {fileKind(d.ext) === "other" ? "⬇️" : "👁️"} View
-                  </a>
-                  {!editing && (
-                    <button
-                      className={`btn small ${activeTargets.includes(d.pathname) ? "selected" : ""}`}
-                      onClick={() => toggleReplace(d.pathname)}
-                      disabled={busy}
-                    >
-                      {activeTargets.includes(d.pathname) ? "✓ Will replace" : "🔁 Replace"}
-                    </button>
-                  )}
+        <DetailsFields
+          name={name}
+          onName={changeName}
+          person={person}
+          onPerson={setPerson}
+          category={category}
+          onCategory={(c) => {
+            setCategory(c);
+            setCategoryTouched(true);
+          }}
+          persons={persons}
+          disabled={busy}
+          firstStep={editing ? undefined : 2}
+          afterPerson={
+            nameMatches.length > 0 && (
+              <div className="warning soft">
+                <div className="warning-title">
+                  ℹ️ {finalPerson} already has{" "}
+                  {nameMatches.length === 1 ? "a document" : `${nameMatches.length} documents`} with this name
+                </div>
+                {nameMatches.slice(0, 3).map((d) => (
+                  <div className="warning-row" key={d.pathname}>
+                    <ExistingDoc doc={d} />
+                    <div className="row-actions">
+                      <a className="btn small" href={fileUrl(d)} target="_blank" rel="noreferrer">
+                        {fileKind(d.ext) === "other" ? "⬇️" : "👁️"} View
+                      </a>
+                      {!editing && (
+                        <button
+                          className={`btn small ${activeTargets.includes(d.pathname) ? "selected" : ""}`}
+                          onClick={() => toggleReplace(d.pathname)}
+                          disabled={busy}
+                        >
+                          {activeTargets.includes(d.pathname) ? "✓ Will replace" : "🔁 Replace"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <div className="hint">
+                  {activeTargets.length > 0
+                    ? "The old version will be deleted after the new one is saved."
+                    : editing
+                      ? "You can still save with this name. To join them into one document, use Select → Merge on the main screen."
+                      : "If this is a newer copy, tap Replace to delete the old one, or just save to keep both."}
                 </div>
               </div>
-            ))}
-            <div className="hint">
-              {activeTargets.length > 0
-                ? "The old version will be deleted after the new one is saved."
-                : editing
-                  ? "You can still save with this name."
-                  : "If this is a newer copy, tap Replace to delete the old one, or just save to keep both."}
-            </div>
-          </div>
-        )}
-
-        <div className="field">
-          <span className="label">{editing ? "Type" : "4. Type"}</span>
-          <div className="cat-grid">
-            {CATEGORIES.map((c) => (
-              <button
-                key={c.key}
-                className={`cat-btn ${category === c.key ? "active" : ""}`}
-                onClick={() => {
-                  setCategory(c.key);
-                  setCategoryTouched(true);
-                }}
-                disabled={busy}
-              >
-                <span className="emoji">{c.icon}</span>
-                {c.label}
-              </button>
-            ))}
-          </div>
-        </div>
+            )
+          }
+        />
 
         {error && <div className="error">{error}</div>}
         {busy && !editing && (
@@ -420,7 +439,7 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
   );
 }
 
-function ExistingDoc({ doc }: { doc: Doc }) {
+export function ExistingDoc({ doc }: { doc: Doc }) {
   const cat = categoryInfo(doc.category);
   return (
     <div className="existing">

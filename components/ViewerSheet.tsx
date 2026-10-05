@@ -11,6 +11,8 @@ type Props = {
   onOpenDoc: (doc: Doc) => void;
   onClose: () => void;
   onEdit: () => void;
+  /** Opens the merge screen to add more photos/files to this document. */
+  onAddPages: () => void;
   /** Called after this document was deleted or replaced, with a success message. */
   onChanged: (message: string) => void;
 };
@@ -23,7 +25,7 @@ export function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdit, onChanged }: Props) {
+export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdit, onAddPages, onChanged }: Props) {
   const kind = fileKind(doc.ext);
   const cat = categoryInfo(doc.category);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -265,6 +267,11 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
           >
             🔄 Replace file
           </button>
+          {kind !== "other" && (
+            <button className="btn wide" onClick={onAddPages} disabled={busy === "replace"}>
+              ➕ Add pages (e.g. back side)
+            </button>
+          )}
           <button className="btn danger wide" onClick={remove} disabled={busy === "delete" || busy === "replace"}>
             {busy === "delete" ? "Deleting…" : confirmDelete ? "Tap again to delete" : "🗑️ Delete"}
           </button>

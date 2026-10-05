@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import MergeSheet from "@/components/MergeSheet";
 import UploadSheet from "@/components/UploadSheet";
 import ViewerSheet, { fileUrl, formatDate } from "@/components/ViewerSheet";
 import {
@@ -13,11 +14,17 @@ import {
   matchesSearch,
   type Doc,
 } from "@/lib/docs";
+import { canMergeDoc } from "@/lib/pdf";
 
 // Blob storage included in Vercel's free Hobby plan.
 const STORAGE_LIMIT_BYTES = 1024 * 1024 * 1024;
 
-type Sheet = { type: "view"; doc: Doc } | { type: "edit"; doc: Doc } | { type: "upload" } | null;
+type Sheet =
+  | { type: "view"; doc: Doc }
+  | { type: "edit"; doc: Doc }
+  | { type: "upload" }
+  | { type: "merge"; docs: Doc[]; base?: Doc }
+  | null;
 
 export default function Home() {
   const [docs, setDocs] = useState<Doc[] | null>(null);
@@ -29,6 +36,9 @@ export default function Home() {
   const [onlyDupes, setOnlyDupes] = useState(false);
   const [sheet, setSheet] = useState<Sheet>(null);
   const [toast, setToast] = useState<{ message: string; id: number } | null>(null);
+  /** Select mode: pathnames in the order they were tapped (that becomes the page order). */
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
 
   useEffect(() => {
     if (!toast) return;
@@ -39,7 +49,19 @@ export default function Home() {
   function done(message: string) {
     closeSheet();
     load();
+    stopSelecting();
     setToast({ message, id: Date.now() });
+  }
+
+  function stopSelecting() {
+    setSelecting(false);
+    setSelected([]);
+  }
+
+  function toggleSelected(doc: Doc) {
+    setSelected((prev) =>
+      prev.includes(doc.pathname) ? prev.filter((p) => p !== doc.pathname) : [...prev, doc.pathname],
+    );
   }
 
   const load = useCallback(async () => {
@@ -114,6 +136,10 @@ export default function Home() {
   const extraCopies = dupeGroups.reduce((n, g) => n + g.length - 1, 0);
   const usedBytes = all.reduce((n, d) => n + d.size, 0);
   const usedPercent = Math.min(100, (usedBytes / STORAGE_LIMIT_BYTES) * 100);
+
+  const selectedDocs = selected.map((p) => all.find((d) => d.pathname === p)).filter((d): d is Doc => Boolean(d));
+  const unmergeable = selectedDocs.filter((d) => !canMergeDoc(d));
+  const openDoc = (doc: Doc) => (selecting ? toggleSelected(doc) : openSheet({ type: "view", doc }));
 
   async function logout() {
     await fetch("/api/logout", { method: "POST" });
@@ -245,10 +271,23 @@ export default function Home() {
                 </button>
               )}
             </span>
-            <button className="link-btn" onClick={() => setSort(sort === "new" ? "az" : "new")}>
-              Sort: {sort === "new" ? "Newest first" : "A → Z"}
-            </button>
+            <span className="toolbar-actions">
+              <button className="link-btn" onClick={() => setSort(sort === "new" ? "az" : "new")}>
+                {sort === "new" ? "Newest first" : "A → Z"}
+              </button>
+              {docs.length > 1 && !selecting && (
+                <button className="link-btn" onClick={() => setSelecting(true)}>
+                  ☑️ Select
+                </button>
+              )}
+            </span>
           </div>
+
+          {selecting && (
+            <div className="banner static">
+              Tap documents in page order (e.g. front first, then back), then tap “Merge”.
+            </div>
+          )}
 
           {docs.length === 0 ? (
             <div className="empty">
@@ -270,16 +309,17 @@ export default function Home() {
                   <h2 className="section-title">
                     {c.icon} {c.label} <span className="count">{items.length}</span>
                   </h2>
-                  <DocGrid docs={items} onOpen={(doc) => openSheet({ type: "view", doc })} dupes={dupesOf} />
+                  <DocGrid docs={items} onOpen={openDoc} dupes={dupesOf} selected={selecting ? selected : null} />
                 </section>
               );
             })
           ) : (
             <DocGrid
               docs={visible}
-              onOpen={(doc) => openSheet({ type: "view", doc })}
+              onOpen={openDoc}
               showCategory
               dupes={dupesOf}
+              selected={selecting ? selected : null}
             />
           )}
         </>
@@ -292,9 +332,34 @@ export default function Home() {
         </div>
       )}
 
-      <button className="fab" onClick={() => openSheet({ type: "upload" })}>
-        ＋ Add
-      </button>
+      {selecting ? (
+        <div className="select-bar">
+          <div className="select-info">
+            <strong>{selected.length} selected</strong>
+            <span>
+              {unmergeable.length > 0
+                ? "Only photos and PDFs can be merged"
+                : selected.length < 2
+                  ? "Pick at least 2"
+                  : "Ready to merge"}
+            </span>
+          </div>
+          <button className="btn small" onClick={stopSelecting}>
+            Cancel
+          </button>
+          <button
+            className="btn small primary"
+            disabled={selected.length < 2 || unmergeable.length > 0}
+            onClick={() => openSheet({ type: "merge", docs: selectedDocs })}
+          >
+            🧩 Merge
+          </button>
+        </div>
+      ) : (
+        <button className="fab" onClick={() => openSheet({ type: "upload" })}>
+          ＋ Add
+        </button>
+      )}
 
       {sheet?.type === "view" && (
         <ViewerSheet
@@ -304,6 +369,7 @@ export default function Home() {
           onOpenDoc={(doc) => setSheet({ type: "view", doc })}
           onClose={closeSheet}
           onEdit={() => setSheet({ type: "edit", doc: sheet.doc })}
+          onAddPages={() => setSheet({ type: "merge", docs: [sheet.doc], base: sheet.doc })}
           onChanged={done}
         />
       )}
@@ -316,6 +382,10 @@ export default function Home() {
           onSaved={done}
         />
       )}
+
+      {sheet?.type === "merge" && (
+        <MergeSheet docs={all} initial={sheet.docs} base={sheet.base} onClose={closeSheet} onSaved={done} />
+      )}
     </main>
   );
 }
@@ -325,20 +395,33 @@ function DocGrid({
   onOpen,
   showCategory,
   dupes,
+  selected,
 }: {
   docs: Doc[];
   onOpen: (d: Doc) => void;
   showCategory?: boolean;
   dupes: Map<string, Doc[]>;
+  /** In select mode, the selected pathnames in order; null otherwise. */
+  selected: string[] | null;
 }) {
   return (
     <div className="grid">
       {docs.map((d) => {
         const cat = categoryInfo(d.category);
         return (
-          <button key={d.pathname} className="card" onClick={() => onOpen(d)}>
+          <button
+            key={d.pathname}
+            className={`card ${selected?.includes(d.pathname) ? "selected" : ""} ${selected && !canMergeDoc(d) ? "dim" : ""}`}
+            onClick={() => onOpen(d)}
+            aria-pressed={selected ? selected.includes(d.pathname) : undefined}
+          >
             <div className="thumb">
               {fileKind(d.ext) === "image" ? <img src={fileUrl(d)} alt="" loading="lazy" /> : fileIcon(d.ext)}
+              {selected && (
+                <span className={`check ${selected.includes(d.pathname) ? "on" : ""}`}>
+                  {selected.includes(d.pathname) ? selected.indexOf(d.pathname) + 1 : ""}
+                </span>
+              )}
             </div>
             <div className="card-body">
               <div className="doc-name">{d.name}</div>
