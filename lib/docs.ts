@@ -21,7 +21,7 @@ export const CATEGORIES = [
 
 export type CategoryKey = (typeof CATEGORIES)[number]["key"];
 
-export const DEFAULT_PERSON = "FAMILY";
+export const DEFAULT_PERSON = "Family";
 
 export type Doc = {
   pathname: string;
@@ -43,15 +43,16 @@ export function isCategory(key: string): key is CategoryKey {
   return CATEGORIES.some((c) => c.key === key);
 }
 
-/** "aadhar card  mom" -> "AADHAR CARD MOM". Keeps only characters that are safe in a file path. */
+/** "vyom  AADHAR card" -> "Vyom Aadhar Card". Keeps only characters that are safe in a file path. */
 export function cleanName(input: string): string {
-  return input
-    .toUpperCase()
-    .replace(/_/g, " ")
-    .replace(/[^A-Z0-9 ().,&'-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 80);
+  return titleCase(
+    input
+      .replace(/_/g, " ")
+      .replace(/[^A-Za-z0-9 ().,&'-]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 80),
+  );
 }
 
 function toSegment(value: string) {
@@ -101,7 +102,7 @@ export function buildPathname(opts: {
   id?: string;
   hash?: string;
 }): string {
-  const name = cleanName(opts.name) || "DOCUMENT";
+  const name = cleanName(opts.name) || "Document";
   const person = cleanName(opts.person) || DEFAULT_PERSON;
   const file = `${toSegment(name)}__${opts.id ?? newId(opts.hash)}${opts.ext ? "." + opts.ext : ""}`;
   return `docs/${opts.category}/${toSegment(person)}/${file}`;
@@ -118,9 +119,10 @@ export function parsePathname(pathname: string): Omit<Doc, "size" | "uploadedAt"
   const name = sep > 0 ? base.slice(0, sep) : base;
   return {
     pathname,
-    name: fromSegment(name),
+    // titleCase also tidies documents saved before names were stored this way.
+    name: titleCase(fromSegment(name)),
     category: isCategory(category) ? category : "OTHER",
-    person: fromSegment(person),
+    person: titleCase(fromSegment(person)),
     ext,
     hash: hashFromId(sep > 0 ? base.slice(sep + 2) : undefined),
   };
@@ -178,6 +180,34 @@ export function guessCategory(name: string): CategoryKey | null {
   return null;
 }
 
+// Short forms that should stay in capitals in file names ("PAN Card", not "Pan Card").
+const ACRONYMS = new Set([
+  "PAN", "RC", "DL", "PUC", "LIC", "ITR", "PF", "PPF", "EPF", "UAN", "FD", "RD", "KYC", "GST", "TDS",
+  "SSC", "HSC", "CBSE", "ICSE", "NOC", "ID", "UPI", "ATM", "IFSC", "HUF", "NRI", "OCI", "PIN", "SBI",
+  "HDFC", "ICICI", "PNB", "BOB", "LPG", "EB", "MRI", "CT", "ECG", "OPD", "ICU", "BCOM", "BSC", "MBA",
+  "USA", "UK", "UAE", "II", "III", "IV",
+]);
+
+/**
+ * How names are stored and shown: "VYOM AADHAR CARD" -> "Vyom Aadhar Card",
+ * "pan card - page 2" -> "PAN Card - Page 2", "10TH MARKSHEET" -> "10th Marksheet".
+ */
+export function titleCase(name: string): string {
+  return name
+    .split(" ")
+    .map((word) =>
+      ACRONYMS.has(word.toUpperCase().replace(/[^A-Z]/g, ""))
+        ? word.toUpperCase()
+        : word.toLowerCase().replace(/(^|[-(/.&])([a-z])/g, (_, sep: string, ch: string) => sep + ch.toUpperCase()),
+    )
+    .join(" ");
+}
+
+/** File name used when downloading or sharing, e.g. "Vyom Aadhar Card.pdf". */
+export function downloadFileName(doc: Pick<Doc, "name" | "ext">): string {
+  return `${titleCase(doc.name)}${doc.ext ? "." + doc.ext : ""}`;
+}
+
 export function fileKind(ext: string): "image" | "pdf" | "other" {
   if (["jpg", "jpeg", "png", "webp", "gif", "heic", "heif"].includes(ext)) return "image";
   if (ext === "pdf") return "pdf";
@@ -194,9 +224,9 @@ export function fileIcon(ext: string): string {
   return "📄";
 }
 
-/** "AADHAR CARD - PAGE 2" and "aadhar card" are the same document name. */
+/** "Aadhar Card - Page 2" and "aadhar card" are the same document name. */
 export function sameDocName(a: string, b: string): boolean {
-  const base = (n: string) => searchKey(cleanName(n).replace(/ - PAGE \d+$/, ""));
+  const base = (n: string) => searchKey(cleanName(n).replace(/ - Page \d+$/i, ""));
   return base(a) !== "" && base(a) === base(b);
 }
 

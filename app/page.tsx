@@ -3,7 +3,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import UploadSheet from "@/components/UploadSheet";
 import ViewerSheet, { fileUrl, formatDate } from "@/components/ViewerSheet";
-import { CATEGORIES, categoryInfo, duplicateGroups, fileIcon, fileKind, matchesSearch, type Doc } from "@/lib/docs";
+import {
+  CATEGORIES,
+  categoryInfo,
+  duplicateGroups,
+  fileIcon,
+  fileKind,
+  formatSize,
+  matchesSearch,
+  type Doc,
+} from "@/lib/docs";
+
+// Blob storage included in Vercel's free Hobby plan.
+const STORAGE_LIMIT_BYTES = 1024 * 1024 * 1024;
 
 type Sheet = { type: "view"; doc: Doc } | { type: "edit"; doc: Doc } | { type: "upload" } | null;
 
@@ -16,6 +28,19 @@ export default function Home() {
   const [sort, setSort] = useState<"new" | "az">("new");
   const [onlyDupes, setOnlyDupes] = useState(false);
   const [sheet, setSheet] = useState<Sheet>(null);
+  const [toast, setToast] = useState<{ message: string; id: number } | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  function done(message: string) {
+    closeSheet();
+    load();
+    setToast({ message, id: Date.now() });
+  }
 
   const load = useCallback(async () => {
     setLoadError("");
@@ -87,6 +112,8 @@ export default function Home() {
   const grouped = category === "ALL" && !query && !onlyDupes;
   const filtersOn = category !== "ALL" || person !== "ALL" || query !== "" || onlyDupes;
   const extraCopies = dupeGroups.reduce((n, g) => n + g.length - 1, 0);
+  const usedBytes = all.reduce((n, d) => n + d.size, 0);
+  const usedPercent = Math.min(100, (usedBytes / STORAGE_LIMIT_BYTES) * 100);
 
   async function logout() {
     await fetch("/api/logout", { method: "POST" });
@@ -156,6 +183,23 @@ export default function Home() {
           </div>
         )}
       </header>
+
+      {docs && (
+        <div className={`storage ${usedPercent >= 80 ? "high" : ""}`}>
+          <div className="storage-text">
+            <span>💾 Storage used</span>
+            <span>
+              <strong>{formatSize(usedBytes)}</strong> of 1 GB ({usedPercent < 1 && usedBytes > 0 ? "<1" : Math.round(usedPercent)}%)
+            </span>
+          </div>
+          <div className="storage-bar" aria-hidden="true">
+            <div style={{ width: `${Math.max(usedPercent, usedBytes > 0 ? 1 : 0)}%` }} />
+          </div>
+          {usedPercent >= 80 && (
+            <div className="storage-warn">Storage is almost full. Delete old copies or upgrade the Vercel plan.</div>
+          )}
+        </div>
+      )}
 
       {loadError && (
         <div className="error" style={{ marginTop: 12 }}>
@@ -241,6 +285,13 @@ export default function Home() {
         </>
       )}
 
+      {toast && (
+        <div className="toast" key={toast.id} role="status" aria-live="polite" onClick={() => setToast(null)}>
+          <span className="toast-icon">✅</span>
+          <span>{toast.message}</span>
+        </div>
+      )}
+
       <button className="fab" onClick={() => openSheet({ type: "upload" })}>
         ＋ Add
       </button>
@@ -253,10 +304,7 @@ export default function Home() {
           onOpenDoc={(doc) => setSheet({ type: "view", doc })}
           onClose={closeSheet}
           onEdit={() => setSheet({ type: "edit", doc: sheet.doc })}
-          onChanged={() => {
-            closeSheet();
-            load();
-          }}
+          onChanged={done}
         />
       )}
 
@@ -265,10 +313,7 @@ export default function Home() {
           docs={all}
           editDoc={sheet.type === "edit" ? sheet.doc : undefined}
           onClose={closeSheet}
-          onSaved={() => {
-            closeSheet();
-            load();
-          }}
+          onSaved={done}
         />
       )}
     </main>

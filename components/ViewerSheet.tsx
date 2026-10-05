@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { categoryInfo, fileIcon, fileKind, formatSize, hashFile, sameHash, type Doc } from "@/lib/docs";
+import { categoryInfo, downloadFileName, fileIcon, fileKind, formatSize, hashFile, sameHash, type Doc } from "@/lib/docs";
 import { docsApi, uploadDocument } from "@/lib/upload";
 
 type Props = {
@@ -11,8 +11,8 @@ type Props = {
   onOpenDoc: (doc: Doc) => void;
   onClose: () => void;
   onEdit: () => void;
-  /** Called after this document was deleted or replaced. */
-  onChanged: () => void;
+  /** Called after this document was deleted or replaced, with a success message. */
+  onChanged: (message: string) => void;
 };
 
 export function fileUrl(doc: Doc, download = false) {
@@ -49,7 +49,7 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
     try {
       const res = await fetch(fileUrl(doc));
       const blob = await res.blob();
-      const file = new File([blob], `${doc.name}${doc.ext ? "." + doc.ext : ""}`, { type: blob.type });
+      const file = new File([blob], downloadFileName(doc), { type: blob.type });
       if (navigator.canShare?.({ files: [file] })) {
         await navigator.share({ files: [file], title: doc.name });
       } else {
@@ -67,7 +67,9 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
     setError("");
     try {
       for (const d of duplicates) await docsApi("DELETE", { pathname: d.pathname });
-      onChanged();
+      onChanged(
+        duplicates.length === 1 ? "Extra copy deleted. One copy kept." : `${duplicates.length} extra copies deleted. One copy kept.`,
+      );
     } catch {
       setBusy("");
       setError("Could not delete all the copies. Please try again.");
@@ -97,7 +99,7 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
         onProgress: (percentage) => setProgress(Math.round(percentage)),
       });
       await docsApi("DELETE", { pathname: doc.pathname });
-      onChanged();
+      onChanged(`File replaced for ${doc.name}`);
     } catch (e) {
       setBusy("");
       setProgress(null);
@@ -113,7 +115,7 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pathname: doc.pathname }),
     });
-    if (res.ok) return onChanged();
+    if (res.ok) return onChanged(`Deleted ${doc.name}`);
     setBusy("");
     setError("Could not delete. Please try again.");
   }

@@ -3,7 +3,7 @@
 A simple, phone-friendly place for the family's important documents (Aadhar, PAN, policies, reports…).
 
 - Upload a photo (straight from the camera) or a PDF, give it a name, choose whose it is and its type.
-- Names are saved in CAPITALS (`aadhar card` → `AADHAR CARD`).
+- Names are tidied automatically (`vyom AADHAR card` → `Vyom Aadhar Card`). Short forms like PAN, LIC and RC stay in capitals. Downloads use the same name, e.g. `Vyom Aadhar Card.pdf`.
 - Search works across spellings: `aadhar`, `aadhaar` and `adhar` all find the same documents.
 - Filter by type (ID Proofs, Bank & Tax, Insurance…) and by person (MOM, DAD…).
 - Open, download, share to WhatsApp, edit details or delete.
@@ -34,7 +34,7 @@ There is no database. Each document is one file in Blob, and its details live in
 
 ```
 docs/<TYPE>/<PERSON>/<NAME>__<FINGERPRINT>-<RANDOM>.<ext>
-e.g. docs/ID/MOM/AADHAR_CARD__bdfe00a4915f550ca8e1df30-40398f.jpg
+e.g. docs/ID/Mom/Aadhar_Card__bdfe00a4915f550ca8e1df30-40398f.jpg
 ```
 
 The fingerprint is the start of the original file's SHA-256, which is how duplicates are found without a database.

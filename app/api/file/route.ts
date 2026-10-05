@@ -1,6 +1,6 @@
 import { get } from "@vercel/blob";
 import { isAuthed, unauthorized } from "@/lib/auth";
-import { parsePathname } from "@/lib/docs";
+import { downloadFileName, parsePathname } from "@/lib/docs";
 
 // Streams a private document to a logged-in family member.
 // ?download=1 makes the browser save it instead of showing it.
@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   const result = await get(pathname, { access: "private" });
   if (result?.statusCode !== 200) return new Response("Not found", { status: 404 });
 
-  const fileName = `${doc.name}${doc.ext ? "." + doc.ext : ""}`;
+  const fileName = downloadFileName(doc);
   // Only photos and PDFs are shown in the browser. Everything else (Word, Excel,
   // and anything that could run code like HTML or SVG) is always downloaded.
   const type = result.blob.contentType;

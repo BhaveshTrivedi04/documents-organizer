@@ -458,16 +458,6 @@ button {
   border-color: var(--accent);
 }
 
-.input.caps {
-  text-transform: uppercase;
-  font-weight: 650;
-}
-
-.input.caps::placeholder {
-  text-transform: none;
-  font-weight: 400;
-}
-
 .pick-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -800,6 +790,89 @@ button {
 
 .keep-btn {
   margin-top: 4px;
+}
+
+/* ---------- Storage meter ---------- */
+
+.storage {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.storage-text {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.storage-text strong {
+  color: var(--text);
+}
+
+.storage-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.storage-bar div {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.storage.high .storage-bar div {
+  background: var(--danger);
+}
+
+.storage-warn {
+  margin-top: 6px;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* ---------- Success message ---------- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: #1d6b4f;
+  color: #fff;
+  font-weight: 650;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
+  animation: toast-in 0.25s ease-out;
+}
+
+.toast-icon {
+  font-size: 1.2rem;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 16px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }
 
 /* ---------- Login ---------- */

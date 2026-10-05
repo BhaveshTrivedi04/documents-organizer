@@ -24,7 +24,8 @@ type Props = {
   /** When set, the sheet edits this document's details instead of uploading. */
   editDoc?: Doc;
   onClose: () => void;
-  onSaved: () => void;
+  /** Called with a short success message to show the user. */
+  onSaved: (message: string) => void;
 };
 
 type Item = {
@@ -86,10 +87,9 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
   const activeTargets = replaceTargets.filter((p) => nameMatches.some((d) => d.pathname === p));
 
   function changeName(value: string) {
-    const upper = value.toUpperCase();
-    setName(upper);
+    setName(value);
     if (!categoryTouched) {
-      const guess = guessCategory(upper);
+      const guess = guessCategory(value);
       if (guess) setCategory(guess);
     }
   }
@@ -128,7 +128,7 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
 
   async function save() {
     const finalName = cleanName(name);
-    if (!finalName) return setError("Please type a name for this document, e.g. AADHAR CARD.");
+    if (!finalName) return setError("Please type a name for this document, e.g. Aadhar Card.");
     if (!editing && items.length === 0) return setError("Please take a photo or choose a file first.");
     setError("");
     setProgress(0);
@@ -139,7 +139,7 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
       } else {
         for (let i = 0; i < items.length; i++) {
           const { hash, choice } = items[i];
-          const docName = items.length > 1 ? `${finalName} - PAGE ${i + 1}` : finalName;
+          const docName = items.length > 1 ? `${finalName} - Page ${i + 1}` : finalName;
           const saved = contentDupes[i]?.saved;
 
           // Same file is already saved: just move the saved one to the new details.
@@ -161,7 +161,12 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
         // The new file is safely saved, so the old version it replaces can go.
         for (const pathname of activeTargets) await docsApi("DELETE", { pathname });
       }
-      onSaved();
+      if (editDoc) onSaved(`Details updated for ${finalName}`);
+      else {
+        const replaced = activeTargets.length + items.filter((it, i) => contentDupes[i]?.saved && it.choice === "replace").length;
+        const what = items.length === 1 ? finalName : `${items.length} files for ${finalName}`;
+        onSaved(replaced > 0 ? `Saved ${what}. Old version replaced.` : `Saved ${what}`);
+      }
     } catch (e) {
       setProgress(null);
       setError(`Could not save. ${(e as Error).message || "Please check your internet and try again."}`);
@@ -237,7 +242,7 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
                 </div>
                 {items.length > 1 && (
                   <div className="hint">
-                    {items.length} files will be saved as PAGE 1, PAGE 2… (e.g. front and back).
+                    {items.length} files will be saved as Page 1, Page 2… (e.g. front and back).
                   </div>
                 )}
               </>
@@ -300,27 +305,37 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
           </label>
           <input
             id="doc-name"
-            className="input caps"
-            placeholder="e.g. AADHAR CARD"
+            className="input"
+            placeholder="e.g. Vyom Aadhar Card"
             value={name}
             onChange={(e) => changeName(e.target.value)}
-            autoCapitalize="characters"
+            autoCapitalize="words"
             autoComplete="off"
             disabled={busy}
           />
+          {cleanName(name) && cleanName(name) !== name.trim() && (
+            <div className="hint">
+              Will be saved as <strong>{cleanName(name)}</strong>
+            </div>
+          )}
         </div>
 
         <div className="field">
           <span className="label">{editing ? "Whose document?" : "3. Whose document?"}</span>
           <input
-            className="input caps"
+            className="input"
             placeholder="Select from below or type new"
             value={person}
-            onChange={(e) => setPerson(e.target.value.toUpperCase())}
-            autoCapitalize="characters"
+            onChange={(e) => setPerson(e.target.value)}
+            autoCapitalize="words"
             autoComplete="off"
             disabled={busy}
           />
+          {cleanName(person) && cleanName(person) !== person.trim() && (
+            <div className="hint">
+              Will be saved as <strong>{cleanName(person)}</strong>
+            </div>
+          )}
           <div className="chip-wrap">
             {personChoices.map((p) => (
               <button
