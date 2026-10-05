@@ -7,6 +7,8 @@ A simple, phone-friendly place for the family's important documents (Aadhar, PAN
 - Search works across spellings: `aadhar`, `aadhaar` and `adhar` all find the same documents.
 - Filter by type (ID Proofs, Bank & Tax, Insurance…) and by person (MOM, DAD…).
 - Open, download, share to WhatsApp, edit details or delete.
+- Any file type can be stored (photos, PDFs, Word, Excel…). Photos and PDFs open in the browser; other files download.
+- **Duplicate check:** each file is fingerprinted (SHA-256) on upload. If the exact same file is already saved, under any name, the upload screen says which document it is, with a link to view it. A banner on the home page lists any files saved more than once so the extras can be deleted.
 - Files are stored **privately** in Vercel Blob and can only be opened by someone who has logged in with the family password.
 
 ## Deploy on Vercel
@@ -31,9 +33,11 @@ npm run dev
 There is no database. Each document is one file in Blob, and its details live in its path:
 
 ```
-docs/<TYPE>/<PERSON>/<NAME>__<ID>.<ext>
-e.g. docs/ID/MOM/AADHAR_CARD__3f9c1a…​.jpg
+docs/<TYPE>/<PERSON>/<NAME>__<FINGERPRINT>-<RANDOM>.<ext>
+e.g. docs/ID/MOM/AADHAR_CARD__bdfe00a4915f550ca8e1df30-40398f.jpg
 ```
+
+The fingerprint is the start of the original file's SHA-256, which is how duplicates are found without a database.
 
 You can also browse the same files in the Vercel dashboard under Storage → your Blob store.
 
