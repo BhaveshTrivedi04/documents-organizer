@@ -45,7 +45,7 @@ export default function DetailsFields({
         <input
           id="doc-name"
           className="input"
-          placeholder="e.g. Vyom Aadhar Card"
+          placeholder="e.g. Aadhar Card"
           value={name}
           onChange={(e) => onName(e.target.value)}
           autoCapitalize="words"
