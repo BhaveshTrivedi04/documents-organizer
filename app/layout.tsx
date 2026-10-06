@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   title: "Family Documents",
   description: "Our family's important documents, in one safe place.",
   manifest: "/manifest.webmanifest",
-  icons: { icon: "/icon.svg", apple: "/icon.svg" },
+  icons: { icon: "/icon.svg", apple: "/icons/apple-touch-v2.png" },
   appleWebApp: { capable: true, title: "Documents", statusBarStyle: "default" },
 };
 
