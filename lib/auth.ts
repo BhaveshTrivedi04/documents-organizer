@@ -20,17 +20,18 @@ async function hmac(value: string): Promise<string> {
 }
 
 // Including the password in the signed value means changing FAMILY_PASSWORD
-// logs everyone out.
+// logs everyone out. A password chosen on the login page is not included;
+// changing AUTH_SECRET logs everyone out in that case.
 export async function createSessionToken(): Promise<string> {
   const issued = Date.now().toString();
-  return `${issued}.${await hmac(`${issued}:${process.env.FAMILY_PASSWORD}`)}`;
+  return `${issued}.${await hmac(`${issued}:${process.env.FAMILY_PASSWORD ?? ""}`)}`;
 }
 
 export async function isValidSessionToken(token: string | undefined): Promise<boolean> {
   if (!token) return false;
   const [issued, sig] = token.split(".");
   if (!issued || !sig) return false;
-  const expected = await hmac(`${issued}:${process.env.FAMILY_PASSWORD}`);
+  const expected = await hmac(`${issued}:${process.env.FAMILY_PASSWORD ?? ""}`);
   return timingSafeEqual(sig, expected);
 }
 

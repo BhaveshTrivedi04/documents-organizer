@@ -17,8 +17,8 @@ A simple, phone-friendly place for the family's important documents (Aadhar, PAN
 1. Push this folder to a GitHub repo and import it at https://vercel.com/new (or run `npx vercel` here).
 2. In the Vercel project, go to **Storage → Create → Blob**, choose **Private** access, and connect it to the project. This adds `BLOB_READ_WRITE_TOKEN` automatically.
 3. In **Settings → Environment Variables**, add:
-   - `FAMILY_PASSWORD`: the password the family will type once on each phone
    - `AUTH_SECRET`: any long random string (for example, the output of `openssl rand -hex 32`)
+   - `FAMILY_PASSWORD` (optional): the password the family will type once on each phone. If you leave it out, the first person to open the site chooses the password there. It is saved only as a salted hash (`config/password.json` in the Blob store). Open the site and set it right after deploying.
 4. Redeploy. Open the site on each phone, log in once (it stays logged in for a year), then use the browser menu's **Add to Home screen** option so it opens like an app.
 
 ## Run locally
@@ -46,4 +46,4 @@ You can also browse the same files in the Vercel dashboard under Storage → you
 
 - **Storage limits.** Vercel's Hobby plan includes a limited amount of Blob storage. Large phone photos are shrunk on upload (to max 2400px, still sharp enough to read), which keeps most documents under 1 MB.
 - **Backups.** Blob files stay until you delete them, but for documents meant to last a lifetime, download a copy every so often (for example from the Vercel dashboard) and keep it somewhere else too.
-- **Changing the password.** Change `FAMILY_PASSWORD` in Vercel and redeploy. This logs everyone out.
+- **Changing the password.** If you use `FAMILY_PASSWORD`, change it in Vercel and redeploy. This logs everyone out. If the password was chosen on the site, delete `config/password.json` in the Blob store, change `AUTH_SECRET` and redeploy (this logs everyone out), then open the site and choose a new one.
