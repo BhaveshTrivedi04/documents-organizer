@@ -9,15 +9,17 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   // null while checking; true on the very first visit, before a password exists.
   const [setup, setSetup] = useState<boolean | null>(null);
+  // The server couldn't check the password settings (e.g. storage not connected).
+  const [problem, setProblem] = useState("");
 
   useEffect(() => {
-    fetch("/api/login")
+    fetch("/api/login", { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
-        if (data.error) setError(data.error);
-        setSetup(Boolean(data.setup));
+        if (data.error) setProblem(data.error);
+        else setSetup(Boolean(data.setup));
       })
-      .catch(() => setSetup(false));
+      .catch(() => setProblem("Can't reach the site. Please check your internet and try again."));
   }, []);
 
   async function submit(e: React.FormEvent) {
@@ -62,7 +64,13 @@ export default function LoginPage() {
             ? "Welcome! Choose a password for your family. Everyone at home will use it to open the app."
             : "Aadhar, PAN, policies and more. Find them in seconds."}
         </p>
-        {setup !== null && (
+        {problem && (
+          <form onSubmit={(e) => (e.preventDefault(), window.location.reload())}>
+            <div className="error">{problem}</div>
+            <button className="btn primary block">Try again</button>
+          </form>
+        )}
+        {!problem && setup !== null && (
           <form onSubmit={submit}>
             {error && <div className="error">{error}</div>}
             <input

@@ -4,3 +4,8 @@ node_modules
 .env
 .vercel
 next-env.d.ts
+
+# Family guide (shared separately, not part of the app)
+guide/guide.html
+guide/*.pdf
+guide/shots/
