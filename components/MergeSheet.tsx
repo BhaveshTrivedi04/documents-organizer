@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import DetailsFields from "@/components/DetailsFields";
 import Icon, { FileGlyph } from "@/components/Icon";
 import LazyImage from "@/components/LazyImage";
-import { fileUrl } from "@/components/ViewerSheet";
 import {
   DEFAULT_PERSON,
   cleanName,
@@ -14,6 +13,7 @@ import {
   type CategoryKey,
   type Doc,
 } from "@/lib/docs";
+import { fileUrl } from "@/lib/files";
 import { buildPdf, canMergeFile, fetchDocFile } from "@/lib/pdf";
 import { docsApi, uploadDocument } from "@/lib/upload";
 

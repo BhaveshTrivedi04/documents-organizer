@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import DetailsFields from "@/components/DetailsFields";
 import Icon, { FileGlyph } from "@/components/Icon";
-import { fileUrl, formatDate } from "@/components/ViewerSheet";
+import { formatDate } from "@/components/ViewerSheet";
 import {
   DEFAULT_PERSON,
   categoryInfo,
@@ -18,12 +18,15 @@ import {
   type Doc,
 } from "@/lib/docs";
 import { buildPdf, canMergeFile } from "@/lib/pdf";
+import { downloadDoc } from "@/lib/files";
 import { docsApi, uploadDocument } from "@/lib/upload";
 
 type Props = {
   docs: Doc[];
   /** When set, the sheet edits this document's details instead of uploading. */
   editDoc?: Doc;
+  /** Shows a saved photo or PDF full screen inside the app. */
+  onPreview: (doc: Doc) => void;
   onClose: () => void;
   /** Called with a short success message to show the user. */
   onSaved: (message: string) => void;
@@ -45,7 +48,7 @@ function looksAutoNamed(name: string) {
   );
 }
 
-export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) {
+export default function UploadSheet({ docs, editDoc, onPreview, onClose, onSaved }: Props) {
   const editing = Boolean(editDoc);
   const [items, setItems] = useState<Item[]>([]);
   const [name, setName] = useState(editDoc?.name ?? "");
@@ -81,6 +84,8 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
     return saved ? { saved } : null;
   });
   const undecided = items.filter((it, i) => contentDupes[i]?.saved && !it.choice).length;
+  // The same file picked twice in this batch would otherwise be saved twice.
+  const repeats = contentDupes.filter((d) => d?.earlier !== undefined).length;
   const checking = items.some((it) => it.hash === undefined);
 
   const finalPerson = cleanName(person) || DEFAULT_PERSON;
@@ -118,6 +123,12 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
       const base = added[0].file.name.replace(/\.[^.]+$/, "");
       if (!looksAutoNamed(base)) changeName(cleanName(base));
     }
+  }
+
+  /** Opens a saved document to compare, without leaving the app. */
+  function look(doc: Doc) {
+    if (fileKind(doc.ext) === "other") downloadDoc(doc).catch((e) => setError((e as Error).message));
+    else onPreview(doc);
   }
 
   function setChoice(index: number, choice: Item["choice"]) {
@@ -215,6 +226,7 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
   let saveLabel = editing ? "Save changes" : "Save document";
   if (busy) saveLabel = status || (editing ? "Saving…" : `Saving… ${progress}%`);
   else if (checking) saveLabel = "Checking files…";
+  else if (repeats > 0) saveLabel = "Remove the extra copy above";
   else if (undecided > 0) saveLabel = "Choose Replace or Keep both above";
   else if (activeTargets.length > 0 || replacingSaved.length > 0) saveLabel = "Save and replace old";
   else if (combining) saveLabel = `Save as one PDF (${items.length} pages)`;
@@ -331,9 +343,9 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
                   {dupe.saved ? (
                     <>
                       <ExistingDoc doc={dupe.saved} />
-                      <a className="view-link" href={fileUrl(dupe.saved)} target="_blank" rel="noreferrer">
+                      <button className="view-link" onClick={() => look(dupe.saved!)}>
                         {fileKind(dupe.saved.ext) === "other" ? "Download it to check" : "View it"} →
-                      </a>
+                      </button>
                       <div className="choice-row">
                         <button
                           className={`btn small ${items[i].choice === "replace" ? "selected" : ""}`}
@@ -401,9 +413,9 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
                   <div className="warning-row" key={d.pathname}>
                     <ExistingDoc doc={d} />
                     <div className="row-actions">
-                      <a className="btn small" href={fileUrl(d)} target="_blank" rel="noreferrer">
+                      <button className="btn small" onClick={() => look(d)}>
                         <Icon name={fileKind(d.ext) === "other" ? "download" : "eye"} size={16} /> View
-                      </a>
+                      </button>
                       {!editing && (
                         <button
                           className={`btn small ${activeTargets.includes(d.pathname) ? "selected" : ""}`}
@@ -443,7 +455,7 @@ export default function UploadSheet({ docs, editDoc, onClose, onSaved }: Props) 
           </div>
         )}
 
-        <button className="btn primary block" onClick={save} disabled={busy || checking || undecided > 0}>
+        <button className="btn primary block" onClick={save} disabled={busy || checking || undecided > 0 || repeats > 0}>
           {saveLabel}
         </button>
       </div>

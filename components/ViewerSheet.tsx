@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Icon, { FileGlyph } from "@/components/Icon";
 import LazyImage from "@/components/LazyImage";
 import { categoryInfo, downloadFileName, fileKind, formatSize, hashFile, sameHash, type Doc } from "@/lib/docs";
+import { downloadDoc, fileUrl } from "@/lib/files";
 import { docsApi, uploadDocument } from "@/lib/upload";
 
 type Props = {
@@ -11,6 +12,8 @@ type Props = {
   /** Other saved documents with exactly the same file contents. */
   duplicates: Doc[];
   onOpenDoc: (doc: Doc) => void;
+  /** Shows the photo or PDF full screen inside the app. */
+  onPreview: (doc: Doc) => void;
   onClose: () => void;
   onEdit: () => void;
   /** Opens the merge screen to add more photos/files to this document. */
@@ -19,15 +22,11 @@ type Props = {
   onChanged: (message: string) => void;
 };
 
-export function fileUrl(doc: Doc, download = false) {
-  return `/api/file?p=${encodeURIComponent(doc.pathname)}${download ? "&download=1" : ""}`;
-}
-
 export function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdit, onAddPages, onChanged }: Props) {
+export default function ViewerSheet({ doc, duplicates, onOpenDoc, onPreview, onClose, onEdit, onAddPages, onChanged }: Props) {
   const kind = fileKind(doc.ext);
   const cat = categoryInfo(doc.category);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -61,6 +60,17 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
       }
     } catch (e) {
       if ((e as Error).name !== "AbortError") setError("Could not share. Please try Download.");
+    }
+    setBusy("");
+  }
+
+  async function download() {
+    setBusy("download");
+    setError("");
+    try {
+      await downloadDoc(doc);
+    } catch (e) {
+      setError((e as Error).message);
     }
     setBusy("");
   }
@@ -143,19 +153,20 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
 
         <div className="paper">
           {kind === "image" ? (
-            <a href={fileUrl(doc)} target="_blank" rel="noreferrer">
+            <button className="paper-btn" onClick={() => onPreview(doc)} aria-label="View full screen">
               <LazyImage src={fileUrl(doc)} alt={doc.name} showLabel />
-            </a>
+            </button>
           ) : kind === "pdf" && wide ? (
             <iframe src={fileUrl(doc)} title={doc.name} />
+          ) : kind === "pdf" ? (
+            <button className="placeholder paper-btn" onClick={() => onPreview(doc)}>
+              <FileGlyph ext={doc.ext} size={54} />
+              <div>Tap to read this PDF</div>
+            </button>
           ) : (
             <div className="placeholder">
               <FileGlyph ext={doc.ext} size={54} />
-              <div>
-                {kind === "pdf"
-                  ? "Tap Open to read this PDF"
-                  : `No preview for ${doc.ext ? doc.ext.toUpperCase() + " files" : "this file"}. Tap Download to open it.`}
-              </div>
+              <div>{`No preview for ${doc.ext ? doc.ext.toUpperCase() + " files" : "this file"}. Tap Download to open it.`}</div>
             </div>
           )}
         </div>
@@ -253,13 +264,13 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onClose, onEdi
 
         <div className="actions">
           {kind !== "other" && (
-            <a className="btn primary" href={fileUrl(doc)} target="_blank" rel="noreferrer">
+            <button className="btn primary" onClick={() => onPreview(doc)}>
               <Icon name="eye" size={18} /> Open
-            </a>
+            </button>
           )}
-          <a className={`btn ${kind === "other" ? "primary wide" : ""}`} href={fileUrl(doc, true)}>
-            <Icon name="download" size={18} /> Download
-          </a>
+          <button className={`btn ${kind === "other" ? "primary wide" : ""}`} onClick={download} disabled={busy === "download"}>
+            <Icon name="download" size={18} /> {busy === "download" ? "Downloading…" : "Download"}
+          </button>
           {canShare && (
             <button className="btn wide" onClick={share} disabled={busy === "share"}>
               <Icon name="share" size={18} /> {busy === "share" ? "Preparing…" : "Share on WhatsApp, Email…"}

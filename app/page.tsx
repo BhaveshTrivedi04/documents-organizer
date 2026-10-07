@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import DocPreview from "@/components/DocPreview";
 import Icon, { FileGlyph } from "@/components/Icon";
 import LazyImage from "@/components/LazyImage";
 import MergeSheet from "@/components/MergeSheet";
 import UploadSheet from "@/components/UploadSheet";
-import ViewerSheet, { fileUrl } from "@/components/ViewerSheet";
+import ViewerSheet from "@/components/ViewerSheet";
 import {
   CATEGORIES,
   categoryInfo,
@@ -17,6 +18,7 @@ import {
   relativeDate,
   type Doc,
 } from "@/lib/docs";
+import { fileUrl } from "@/lib/files";
 import { canMergeDoc } from "@/lib/pdf";
 
 // Blob storage included in Vercel's free Hobby plan.
@@ -51,6 +53,8 @@ export default function Home() {
   const [layout, setLayout] = useState<Layout>("grid");
   const [hello, setHello] = useState("Welcome");
   const [sheet, setSheet] = useState<Sheet>(null);
+  /** Full-screen photo/PDF view, shown above any popup. */
+  const [preview, setPreview] = useState<Doc | null>(null);
   const [toast, setToast] = useState<{ message: string; id: number } | null>(null);
   /** Select mode: pathnames in the order they were tapped (that becomes the page order). */
   const [selecting, setSelecting] = useState(false);
@@ -58,6 +62,8 @@ export default function Home() {
 
   const sheetRef = useRef(sheet);
   sheetRef.current = sheet;
+  const previewRef = useRef(preview);
+  previewRef.current = preview;
 
   const load = useCallback(async () => {
     setLoadError("");
@@ -74,6 +80,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    // After a reload the popups are gone, so forget that history said one was open.
+    if (history.state?.sheet || history.state?.preview) {
+      history.replaceState(history.state.view ? { view: history.state.view } : null, "");
+    }
     load();
     setHello(greeting());
     try {
@@ -104,8 +114,10 @@ export default function Home() {
   }
 
   useEffect(() => {
+    // Back closes the top-most thing: the full-screen view, then a popup, then the results page.
     const onPop = () => {
-      if (sheetRef.current) setSheet(null);
+      if (previewRef.current) setPreview(null);
+      else if (sheetRef.current) setSheet(null);
       else resetToHome();
     };
     window.addEventListener("popstate", onPop);
@@ -120,7 +132,12 @@ export default function Home() {
       pushedResults.current = true;
       window.scrollTo({ top: 0 });
     }
-    if (!inResults) pushedResults.current = false;
+    if (!inResults) {
+      pushedResults.current = false;
+      // Filters were cleared with the chips: drop the extra history step so Back
+      // doesn't need pressing twice.
+      if (history.state?.view === "results" && !history.state?.sheet) history.back();
+    }
   }, [inResults]);
 
   function goHome() {
@@ -137,6 +154,16 @@ export default function Home() {
     if (history.state?.sheet) history.back();
     else setSheet(null);
   }
+
+  function openPreview(doc: Doc) {
+    history.pushState({ ...history.state, preview: true }, "");
+    setPreview(doc);
+  }
+
+  const closePreview = useCallback(() => {
+    if (history.state?.preview) history.back();
+    else setPreview(null);
+  }, []);
 
   function done(message: string) {
     closeSheet();
@@ -570,6 +597,7 @@ export default function Home() {
           doc={sheet.doc}
           duplicates={dupesOf.get(sheet.doc.pathname) ?? []}
           onOpenDoc={(doc) => setSheet({ type: "view", doc })}
+          onPreview={openPreview}
           onClose={closeSheet}
           onEdit={() => setSheet({ type: "edit", doc: sheet.doc })}
           onAddPages={() => setSheet({ type: "merge", docs: [sheet.doc], base: sheet.doc })}
@@ -581,6 +609,7 @@ export default function Home() {
         <UploadSheet
           docs={all}
           editDoc={sheet.type === "edit" ? sheet.doc : undefined}
+          onPreview={openPreview}
           onClose={closeSheet}
           onSaved={done}
         />
@@ -589,6 +618,8 @@ export default function Home() {
       {sheet?.type === "merge" && (
         <MergeSheet docs={all} initial={sheet.docs} base={sheet.base} onClose={closeSheet} onSaved={done} />
       )}
+
+      {preview && <DocPreview key={`preview:${preview.pathname}`} doc={preview} onClose={closePreview} />}
     </main>
   );
 }
