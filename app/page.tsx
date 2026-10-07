@@ -19,6 +19,7 @@ import {
   type Doc,
 } from "@/lib/docs";
 import { fileUrl } from "@/lib/files";
+import { shareOnWhatsApp } from "@/lib/contact";
 import { canMergeDoc } from "@/lib/pdf";
 import { PLANS, type Plan } from "@/lib/plan";
 
@@ -29,7 +30,7 @@ type Sheet =
   | { type: "edit"; doc: Doc }
   | { type: "upload" }
   | { type: "merge"; docs: Doc[]; base?: Doc }
-  | { type: "menu" }
+  | { type: "menu"; focusMessage?: boolean }
   | null;
 
 type Layout = "grid" | "list";
@@ -466,8 +467,9 @@ export default function Home() {
                 <span className="storage-label">
                   <Icon name="file" size={16} /> {plan.label} plan
                 </span>
-                <span>
+                <span className="storage-count">
                   <strong>{all.length}</strong> of {plan.total} documents
+                  <Icon name="right" size={16} />
                 </span>
               </span>
               <span className="storage-bar" aria-hidden="true">
@@ -495,8 +497,30 @@ export default function Home() {
                   {all.length} document{all.length === 1 ? "" : "s"} saved · no limits, every update included
                 </span>
               </span>
+              <Icon name="right" size={18} className="row-chevron" />
             </button>
           )}
+
+          <div className="home-actions">
+            <button className="home-action glass" onClick={shareOnWhatsApp}>
+              <span className="type-icon">
+                <Icon name="heart" size={19} />
+              </span>
+              <span>
+                <strong>Share with friends</strong>
+                <small>Send them the app on WhatsApp</small>
+              </span>
+            </button>
+            <button className="home-action glass" onClick={() => openSheet({ type: "menu", focusMessage: true })}>
+              <span className="type-icon">
+                <Icon name="chat" size={19} />
+              </span>
+              <span>
+                <strong>Suggestions</strong>
+                <small>Ideas or problems? Tell us</small>
+              </span>
+            </button>
+          </div>
         </>
       )}
 
@@ -646,7 +670,9 @@ export default function Home() {
         <MergeSheet docs={all} plan={plan} initial={sheet.docs} base={sheet.base} onClose={closeSheet} onSaved={done} />
       )}
 
-      {sheet?.type === "menu" && <MenuSheet docs={all} plan={plan} onClose={closeSheet} onLogout={logout} />}
+      {sheet?.type === "menu" && (
+        <MenuSheet docs={all} plan={plan} focusMessage={sheet.focusMessage} onClose={closeSheet} onLogout={logout} />
+      )}
 
       {preview && <DocPreview key={`preview:${preview.pathname}`} doc={preview} onClose={closePreview} />}
     </main>

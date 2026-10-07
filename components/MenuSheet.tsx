@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Icon from "@/components/Icon";
 import { upgradeLink } from "@/components/LimitNotice";
-import { COMPANY, CONTACT_EMAIL, CONTACT_NAME, CONTACT_PHONE, buyUrl, whatsappShare, whatsappToUs } from "@/lib/contact";
+import { COMPANY, CONTACT_EMAIL, CONTACT_PHONE, shareMessage, shareOnWhatsApp, whatsappToUs } from "@/lib/contact";
 import type { Doc } from "@/lib/docs";
 import { PLANS, rupees, type Plan } from "@/lib/plan";
 
@@ -12,13 +12,16 @@ type Props = {
   plan: Plan;
   onClose: () => void;
   onLogout: () => void;
+  /** Open with the suggestion box ready to type in. */
+  focusMessage?: boolean;
 };
 
 const TOPICS = ["Suggestion", "Problem", "Question", "Remark"] as const;
 const SENDER_KEY = "family-docs-sender";
 
 /** Plan, messages to us, sharing with friends and logging out. */
-export default function MenuSheet({ docs, plan, onClose, onLogout }: Props) {
+export default function MenuSheet({ docs, plan, onClose, onLogout, focusMessage }: Props) {
+  const messageRef = useRef<HTMLTextAreaElement>(null);
   const [topic, setTopic] = useState<(typeof TOPICS)[number]>("Suggestion");
   const [message, setMessage] = useState("");
   const [sender, setSender] = useState(() => {
@@ -28,6 +31,13 @@ export default function MenuSheet({ docs, plan, onClose, onLogout }: Props) {
       return "";
     }
   });
+
+  useEffect(() => {
+    if (!focusMessage) return;
+    const box = messageRef.current;
+    box?.scrollIntoView({ block: "center" });
+    box?.focus({ preventScroll: true });
+  }, [focusMessage]);
 
   const people = Array.from(new Set(docs.map((d) => d.person))).sort();
   const usedPercent = plan.total ? Math.min(100, (docs.length / plan.total) * 100) : 0;
@@ -41,15 +51,6 @@ export default function MenuSheet({ docs, plan, onClose, onLogout }: Props) {
     lines.push("", message.trim(), "", `App: ${window.location.origin} (${plan.label} plan)`);
     window.open(whatsappToUs(lines.join("\n")), "_blank");
   }
-
-  // The sheet only opens after a tap, so `window` is always there.
-  const shareText = [
-    `I keep all my family's important papers (Aadhaar, PAN, policies, reports…) safe in one private app on my phone, and find any of them in seconds. It's made by ${COMPANY}.`,
-    "",
-    `Get it for your family: ${buyUrl()}`,
-    `Or message ${CONTACT_NAME} on WhatsApp: ${whatsappToUs("Hi, I'd like to know more about the Family Documents app.")}`,
-    `Phone: ${CONTACT_PHONE} · Email: ${CONTACT_EMAIL}`,
-  ].join("\n");
 
   return (
     <div className="overlay" onClick={onClose}>
@@ -115,6 +116,7 @@ export default function MenuSheet({ docs, plan, onClose, onLogout }: Props) {
             ))}
           </div>
           <textarea
+            ref={messageRef}
             className="input textarea"
             placeholder={
               topic === "Problem"
@@ -148,12 +150,12 @@ export default function MenuSheet({ docs, plan, onClose, onLogout }: Props) {
             Send friends a short note about the app with our contact details, so they can get it for their family too.
           </div>
           <div className="pick-row">
-            <a className="btn" href={whatsappShare(shareText)} target="_blank" rel="noreferrer">
+            <button className="btn" onClick={shareOnWhatsApp}>
               <Icon name="heart" size={17} /> WhatsApp
-            </a>
+            </button>
             <button
               className="btn"
-              onClick={() => navigator.share?.({ text: shareText }).catch(() => {})}
+              onClick={() => navigator.share?.({ text: shareMessage() }).catch(() => {})}
               disabled={!("share" in navigator)}
             >
               <Icon name="share" size={17} /> Other apps
@@ -163,16 +165,26 @@ export default function MenuSheet({ docs, plan, onClose, onLogout }: Props) {
 
         {/* ----- Contact ----- */}
         <section className="panel contact-card">
-          <div className="panel-title">{COMPANY}</div>
-          <a href={whatsappToUs("Hi, I need help with the Family Documents app.")} target="_blank" rel="noreferrer">
-            <Icon name="chat" size={16} /> WhatsApp {CONTACT_NAME}
-          </a>
-          <a href={`tel:+91${CONTACT_PHONE.replace(/\s/g, "")}`}>
-            <Icon name="phone" size={16} /> {CONTACT_PHONE}
-          </a>
-          <a href={`mailto:${CONTACT_EMAIL}`}>
-            <Icon name="mail" size={16} /> {CONTACT_EMAIL}
-          </a>
+          <div className="contact-head">
+            <strong>{COMPANY}</strong>
+            <span>
+              {CONTACT_PHONE} · {CONTACT_EMAIL}
+            </span>
+          </div>
+          <div className="contact-actions">
+            <a href={whatsappToUs("Hi, I need help with the Family Documents app.")} target="_blank" rel="noreferrer">
+              <Icon name="chat" size={20} />
+              WhatsApp
+            </a>
+            <a href={`tel:+91${CONTACT_PHONE.replace(/\s/g, "")}`}>
+              <Icon name="phone" size={20} />
+              Call
+            </a>
+            <a href={`mailto:${CONTACT_EMAIL}`}>
+              <Icon name="mail" size={20} />
+              Email
+            </a>
+          </div>
         </section>
 
         <button className="btn ghost block" onClick={onLogout}>
