@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import DetailsFields from "@/components/DetailsFields";
 import Icon, { FileGlyph } from "@/components/Icon";
+import LimitNotice from "@/components/LimitNotice";
 import { formatDate } from "@/components/ViewerSheet";
 import {
   DEFAULT_PERSON,
@@ -19,10 +20,12 @@ import {
 } from "@/lib/docs";
 import { buildPdf, canMergeFile } from "@/lib/pdf";
 import { downloadDoc } from "@/lib/files";
-import { docsApi, uploadDocument } from "@/lib/upload";
+import { limitProblem, type Plan } from "@/lib/plan";
+import { LimitError, docsApi, uploadDocument } from "@/lib/upload";
 
 type Props = {
   docs: Doc[];
+  plan: Plan;
   /** When set, the sheet edits this document's details instead of uploading. */
   editDoc?: Doc;
   /** Shows a saved photo or PDF full screen inside the app. */
@@ -48,7 +51,7 @@ function looksAutoNamed(name: string) {
   );
 }
 
-export default function UploadSheet({ docs, editDoc, onPreview, onClose, onSaved }: Props) {
+export default function UploadSheet({ docs, plan, editDoc, onPreview, onClose, onSaved }: Props) {
   const editing = Boolean(editDoc);
   const [items, setItems] = useState<Item[]>([]);
   const [name, setName] = useState(editDoc?.name ?? "");
@@ -61,6 +64,8 @@ export default function UploadSheet({ docs, editDoc, onPreview, onClose, onSaved
   /** Saved documents (same name, different file) to delete once the new upload succeeds. */
   const [replaceTargets, setReplaceTargets] = useState<string[]>([]);
   const [error, setError] = useState("");
+  /** The server refused to save because the plan's limit was reached meanwhile. */
+  const [limitError, setLimitError] = useState("");
   const cameraRef = useRef<HTMLInputElement>(null);
   const filesRef = useRef<HTMLInputElement>(null);
   const itemsRef = useRef(items);
@@ -98,6 +103,22 @@ export default function UploadSheet({ docs, editDoc, onPreview, onClose, onSaved
   // Only replace documents that still match what's typed now.
   const activeTargets = replaceTargets.filter((p) => nameMatches.some((d) => d.pathname === p));
   const replacingSaved = items.filter((it, i) => contentDupes[i]?.saved && it.choice === "replace");
+  const replacingSavedPaths = replacingSaved.map((it) => contentDupes[items.indexOf(it)]!.saved!.pathname);
+
+  // Old copies deleted after the upload don't count against the plan's limit.
+  // Without combining, a "Replace old one" file just renames the saved copy.
+  const replaces = combining ? [...activeTargets, ...replacingSavedPaths] : activeTargets;
+  const newCount = combining ? 1 : items.length - replacingSaved.length;
+  let limit: string | null = null;
+  if (editDoc) {
+    if (finalPerson !== editDoc.person) limit = limitProblem({ ...plan, total: null }, docs, person, [editDoc.pathname]);
+  } else if (items.length === 0) {
+    // Nothing picked yet: warn early if even one more can't be saved.
+    limit = limitProblem(plan, docs, person, replaces);
+  } else if (newCount > 0) {
+    // Only renaming saved copies ("Replace old one") adds nothing, so it's always allowed.
+    limit = limitProblem(plan, docs, person, replaces, newCount);
+  }
 
   function changeName(value: string) {
     setName(value);
@@ -155,7 +176,9 @@ export default function UploadSheet({ docs, editDoc, onPreview, onClose, onSaved
     const finalName = cleanName(name);
     if (!finalName) return setError("Please type a name for this document, e.g. Aadhar Card.");
     if (!editing && items.length === 0) return setError("Please take a photo or choose a file first.");
+    if (limit) return;
     setError("");
+    setLimitError("");
     setProgress(0);
 
     try {
@@ -174,6 +197,7 @@ export default function UploadSheet({ docs, editDoc, onPreview, onClose, onSaved
           name: finalName,
           category,
           person,
+          replaces,
           onProgress: (percentage) => setProgress(Math.round(percentage)),
         });
         // Old separate copies are now pages inside the new PDF.
@@ -200,6 +224,7 @@ export default function UploadSheet({ docs, editDoc, onPreview, onClose, onSaved
             name: docName,
             category,
             person,
+            replaces,
             onProgress: (percentage) => setProgress(Math.round(((i + percentage / 100) / items.length) * 100)),
           });
         }
@@ -217,6 +242,7 @@ export default function UploadSheet({ docs, editDoc, onPreview, onClose, onSaved
     } catch (e) {
       setProgress(null);
       setStatus("");
+      if (e instanceof LimitError) return setLimitError(e.message);
       setError(`Could not save. ${(e as Error).message || "Please check your internet and try again."}`);
     }
   }
@@ -226,6 +252,7 @@ export default function UploadSheet({ docs, editDoc, onPreview, onClose, onSaved
   let saveLabel = editing ? "Save changes" : "Save document";
   if (busy) saveLabel = status || (editing ? "Saving…" : `Saving… ${progress}%`);
   else if (checking) saveLabel = "Checking files…";
+  else if (limit) saveLabel = "Document limit reached";
   else if (repeats > 0) saveLabel = "Remove the extra copy above";
   else if (undecided > 0) saveLabel = "Choose Replace or Keep both above";
   else if (activeTargets.length > 0 || replacingSaved.length > 0) saveLabel = "Save and replace old";
@@ -448,6 +475,7 @@ export default function UploadSheet({ docs, editDoc, onPreview, onClose, onSaved
           }
         />
 
+        {(limit || limitError) && <LimitNotice message={limit || limitError} />}
         {error && <div className="error">{error}</div>}
         {busy && !editing && (
           <div className="progress" aria-label="Upload progress">
@@ -455,7 +483,7 @@ export default function UploadSheet({ docs, editDoc, onPreview, onClose, onSaved
           </div>
         )}
 
-        <button className="btn primary block" onClick={save} disabled={busy || checking || undecided > 0 || repeats > 0}>
+        <button className="btn primary block" onClick={save} disabled={busy || checking || undecided > 0 || repeats > 0 || Boolean(limit)}>
           {saveLabel}
         </button>
       </div>

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import DetailsFields from "@/components/DetailsFields";
 import Icon, { FileGlyph } from "@/components/Icon";
 import LazyImage from "@/components/LazyImage";
+import LimitNotice from "@/components/LimitNotice";
 import {
   DEFAULT_PERSON,
   cleanName,
@@ -15,10 +16,12 @@ import {
 } from "@/lib/docs";
 import { fileUrl } from "@/lib/files";
 import { buildPdf, canMergeFile, fetchDocFile } from "@/lib/pdf";
-import { docsApi, uploadDocument } from "@/lib/upload";
+import { limitProblem, type Plan } from "@/lib/plan";
+import { LimitError, docsApi, uploadDocument } from "@/lib/upload";
 
 type Props = {
   docs: Doc[];
+  plan: Plan;
   /** Saved documents to merge, in the order they were picked. */
   initial: Doc[];
   /** "Add pages" mode: this document gets the new pages and is replaced by the result. */
@@ -32,7 +35,7 @@ type Part = { key: string; doc?: Doc; file?: File; preview?: string | null };
 
 let nextKey = 0;
 
-export default function MergeSheet({ docs, initial, base, onClose, onSaved }: Props) {
+export default function MergeSheet({ docs, plan, initial, base, onClose, onSaved }: Props) {
   const first = base ?? initial[0];
   const [parts, setParts] = useState<Part[]>(() => initial.map((doc) => ({ key: `k${nextKey++}`, doc })));
   const [name, setName] = useState(base ? base.name : (first?.name ?? "").replace(/ - Page \d+$/i, ""));
@@ -42,6 +45,7 @@ export default function MergeSheet({ docs, initial, base, onClose, onSaved }: Pr
   const [status, setStatus] = useState("");
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [limitError, setLimitError] = useState("");
   const cameraRef = useRef<HTMLInputElement>(null);
   const filesRef = useRef<HTMLInputElement>(null);
   const partsRef = useRef(parts);
@@ -52,6 +56,9 @@ export default function MergeSheet({ docs, initial, base, onClose, onSaved }: Pr
   const persons = useMemo(() => Array.from(new Set(docs.map((d) => d.person))).sort(), [docs]);
   const savedParts = parts.filter((p) => p.doc);
   const busy = progress !== null;
+  // The joined originals are deleted afterwards, so they don't count against the plan's limit.
+  const replaces = base || deleteOriginals ? savedParts.map((p) => p.doc!.pathname) : [];
+  const limit = limitProblem(plan, docs, person, replaces);
 
   function addFiles(list: FileList | null) {
     if (!list) return;
@@ -83,7 +90,9 @@ export default function MergeSheet({ docs, initial, base, onClose, onSaved }: Pr
     const finalName = cleanName(name);
     if (!finalName) return setError("Please type a name for the merged document.");
     if (parts.length < 2) return setError("Add at least two pages.");
+    if (limit) return;
     setError("");
+    setLimitError("");
     setProgress(0);
     try {
       setStatus("Getting the pages…");
@@ -100,6 +109,7 @@ export default function MergeSheet({ docs, initial, base, onClose, onSaved }: Pr
         name: finalName,
         category,
         person,
+        replaces,
         onProgress: (percentage) => setProgress(Math.round(percentage)),
       });
 
@@ -115,6 +125,7 @@ export default function MergeSheet({ docs, initial, base, onClose, onSaved }: Pr
     } catch (e) {
       setProgress(null);
       setStatus("");
+      if (e instanceof LimitError) return setLimitError(e.message);
       setError(`Could not merge. ${(e as Error).message || "Please check your internet and try again."}`);
     }
   }
@@ -254,6 +265,7 @@ export default function MergeSheet({ docs, initial, base, onClose, onSaved }: Pr
           )
         )}
 
+        {(limit || limitError) && <LimitNotice message={limit || limitError} />}
         {error && <div className="error">{error}</div>}
         {busy && (
           <div className="progress" aria-label="Progress">
@@ -261,7 +273,7 @@ export default function MergeSheet({ docs, initial, base, onClose, onSaved }: Pr
           </div>
         )}
 
-        <button className="btn primary block" onClick={save} disabled={busy || parts.length < 2}>
+        <button className="btn primary block" onClick={save} disabled={busy || parts.length < 2 || Boolean(limit)}>
           {saveLabel}
         </button>
       </div>

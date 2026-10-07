@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { COMPANY } from "@/lib/contact";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
@@ -97,6 +98,7 @@ export default function LoginPage() {
             </button>
           </form>
         )}
+        <p className="login-brand">by {COMPANY}</p>
       </div>
     </main>
   );

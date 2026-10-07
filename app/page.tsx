@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DocPreview from "@/components/DocPreview";
 import Icon, { FileGlyph } from "@/components/Icon";
 import LazyImage from "@/components/LazyImage";
+import MenuSheet from "@/components/MenuSheet";
 import MergeSheet from "@/components/MergeSheet";
 import UploadSheet from "@/components/UploadSheet";
 import ViewerSheet from "@/components/ViewerSheet";
@@ -12,7 +13,6 @@ import {
   categoryInfo,
   duplicateGroups,
   fileKind,
-  formatSize,
   initials,
   matchesSearch,
   relativeDate,
@@ -20,9 +20,8 @@ import {
 } from "@/lib/docs";
 import { fileUrl } from "@/lib/files";
 import { canMergeDoc } from "@/lib/pdf";
+import { PLANS, type Plan } from "@/lib/plan";
 
-// Blob storage included in Vercel's free Hobby plan.
-const STORAGE_LIMIT_BYTES = 1024 * 1024 * 1024;
 const LAYOUT_KEY = "family-docs-layout";
 
 type Sheet =
@@ -30,6 +29,7 @@ type Sheet =
   | { type: "edit"; doc: Doc }
   | { type: "upload" }
   | { type: "merge"; docs: Doc[]; base?: Doc }
+  | { type: "menu" }
   | null;
 
 type Layout = "grid" | "list";
@@ -43,6 +43,7 @@ function greeting() {
 
 export default function Home() {
   const [docs, setDocs] = useState<Doc[] | null>(null);
+  const [plan, setPlan] = useState<Plan>(PLANS.premium);
   const [loadError, setLoadError] = useState("");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("ALL");
@@ -76,7 +77,9 @@ export default function Home() {
       setLoadError("Could not load documents.");
       return;
     }
-    setDocs((await res.json()).docs);
+    const data = (await res.json()) as { docs: Doc[]; plan: Plan };
+    setDocs(data.docs);
+    setPlan(data.plan);
   }, []);
 
   useEffect(() => {
@@ -249,8 +252,7 @@ export default function Home() {
   );
 
   const extraCopies = dupeGroups.reduce((n, g) => n + g.length - 1, 0);
-  const usedBytes = all.reduce((n, d) => n + d.size, 0);
-  const usedPercent = Math.min(100, (usedBytes / STORAGE_LIMIT_BYTES) * 100);
+  const usedPercent = plan.total ? Math.min(100, (all.length / plan.total) * 100) : 0;
 
   const selectedDocs = selected.map((p) => all.find((d) => d.pathname === p)).filter((d): d is Doc => Boolean(d));
   const unmergeable = selectedDocs.filter((d) => !canMergeDoc(d));
@@ -305,8 +307,8 @@ export default function Home() {
               <div className="greeting">{hello}</div>
               <h1 className="title serif">Your Documents</h1>
             </div>
-            <button className="round-btn" onClick={logout} aria-label="Log out" title="Log out">
-              <Icon name="logout" size={19} />
+            <button className="round-btn" onClick={() => openSheet({ type: "menu" })} aria-label="More" title="More">
+              <Icon name="menu" size={20} />
             </button>
           </div>
         )}
@@ -455,22 +457,46 @@ export default function Home() {
             </div>
           </section>
 
-          <div className={`storage glass ${usedPercent >= 80 ? "high" : ""}`}>
-            <div className="storage-text">
-              <span className="storage-label">
-                <Icon name="storage" size={16} /> Storage
+          {plan.total !== null ? (
+            <button
+              className={`storage glass ${usedPercent >= 80 ? "high" : ""}`}
+              onClick={() => openSheet({ type: "menu" })}
+            >
+              <span className="storage-text">
+                <span className="storage-label">
+                  <Icon name="file" size={16} /> {plan.label} plan
+                </span>
+                <span>
+                  <strong>{all.length}</strong> of {plan.total} documents
+                </span>
               </span>
-              <span>
-                <strong>{formatSize(usedBytes)}</strong> of 1 GB
+              <span className="storage-bar" aria-hidden="true">
+                <span style={{ width: `${Math.max(usedPercent, all.length > 0 ? 2 : 0)}%` }} />
               </span>
-            </div>
-            <div className="storage-bar" aria-hidden="true">
-              <div style={{ width: `${Math.max(usedPercent, usedBytes > 0 ? 1 : 0)}%` }} />
-            </div>
-            {usedPercent >= 80 && (
-              <div className="storage-warn">Storage is almost full. Delete old copies or upgrade the Vercel plan.</div>
-            )}
-          </div>
+              <span className="storage-foot">
+                <span className={usedPercent >= 80 ? "storage-warn" : ""}>
+                  {all.length >= plan.total
+                    ? "All documents used"
+                    : `${plan.total - all.length} left`}
+                </span>
+                <span className="link-btn">Upgrade for unlimited</span>
+              </span>
+            </button>
+          ) : (
+            <button className="unlimited glass" onClick={() => openSheet({ type: "menu" })}>
+              <span className="unlimited-mark serif" aria-hidden="true">
+                ∞
+              </span>
+              <span className="unlimited-text">
+                <strong>
+                  Premium <span className="tag">Unlimited</span>
+                </strong>
+                <span>
+                  {all.length} document{all.length === 1 ? "" : "s"} saved · no limits, every update included
+                </span>
+              </span>
+            </button>
+          )}
         </>
       )}
 
@@ -608,6 +634,7 @@ export default function Home() {
       {(sheet?.type === "upload" || sheet?.type === "edit") && (
         <UploadSheet
           docs={all}
+          plan={plan}
           editDoc={sheet.type === "edit" ? sheet.doc : undefined}
           onPreview={openPreview}
           onClose={closeSheet}
@@ -616,8 +643,10 @@ export default function Home() {
       )}
 
       {sheet?.type === "merge" && (
-        <MergeSheet docs={all} initial={sheet.docs} base={sheet.base} onClose={closeSheet} onSaved={done} />
+        <MergeSheet docs={all} plan={plan} initial={sheet.docs} base={sheet.base} onClose={closeSheet} onSaved={done} />
       )}
+
+      {sheet?.type === "menu" && <MenuSheet docs={all} plan={plan} onClose={closeSheet} onLogout={logout} />}
 
       {preview && <DocPreview key={`preview:${preview.pathname}`} doc={preview} onClose={closePreview} />}
     </main>

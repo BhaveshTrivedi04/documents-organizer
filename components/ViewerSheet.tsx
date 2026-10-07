@@ -110,6 +110,7 @@ export default function ViewerSheet({ doc, duplicates, onOpenDoc, onPreview, onC
         name: doc.name,
         category: doc.category,
         person: doc.person,
+        replaces: [doc.pathname],
         onProgress: (percentage) => setProgress(Math.round(percentage)),
       });
       await docsApi("DELETE", { pathname: doc.pathname });
